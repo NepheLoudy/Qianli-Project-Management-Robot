@@ -1,0 +1,13 @@
+{
+  "manifestVersion": 1,
+  "appID": "cli_aac7e6f6cdf8dcc0",
+  "appType": "docs-addon",
+  "blockTypeID": "blk_6a4d5aeb6cc00ccfc9282adb",
+  "contributes": {
+    "addPanel": {
+      "initialHeight": 600,
+      "view": "index.html"
+    }
+  },
+  "projectName": "飞书项目管理追踪器"
+}

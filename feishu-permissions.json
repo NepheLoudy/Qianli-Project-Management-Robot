@@ -1,0 +1,22 @@
+[
+  {
+    "scope": "bitable:app",
+    "description": "多维表格读写，用于操作项目、日志、关键词监听三张表"
+  },
+  {
+    "scope": "im:message",
+    "description": "获取与发送单聊、群组消息，用于接收群聊消息和回复"
+  },
+  {
+    "scope": "im:message:send_as_bot",
+    "description": "以应用身份发送消息，用于机器人回复用户指令"
+  },
+  {
+    "scope": "im:chat",
+    "description": "获取群组信息，用于获取群聊基本信息"
+  },
+  {
+    "scope": "contact:user.base:readonly",
+    "description": "获取用户基本信息，用于显示发送人姓名"
+  }
+]

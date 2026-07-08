@@ -1,0 +1,5 @@
+bitable:app
+im:message
+im:message:send_as_bot
+im:chat
+contact:user.base:readonly

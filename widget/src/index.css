@@ -1,0 +1,332 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: #f7f8fa;
+  color: #1f2329;
+  font-size: 14px;
+}
+
+.app {
+  padding: 16px;
+  min-height: 100vh;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #e5e6eb;
+  margin-bottom: 16px;
+}
+
+.tab {
+  padding: 8px 16px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  color: #4e5969;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.tab:hover {
+  color: #3370ff;
+}
+
+.tab.active {
+  color: #3370ff;
+  border-bottom-color: #3370ff;
+}
+
+.card {
+  background: #fff;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  margin-bottom: 16px;
+}
+
+.card-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #1d2129;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th,
+.table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid #f2f3f5;
+}
+
+.table th {
+  background: #f7f8fa;
+  font-weight: 600;
+  color: #4e5969;
+}
+
+.table tr:hover {
+  background: #f7f8fa;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.badge-high {
+  background: #ffece8;
+  color: #f53f3f;
+}
+
+.badge-medium {
+  background: #fff7e8;
+  color: #ff7d00;
+}
+
+.badge-low {
+  background: #e8ffea;
+  color: #00b42a;
+}
+
+.badge-urgent {
+  background: #ffece8;
+  color: #f53f3f;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.btn {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background: #3370ff;
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: #2860e1;
+}
+
+.btn-secondary {
+  background: #f2f3f5;
+  color: #4e5969;
+}
+
+.btn-secondary:hover {
+  background: #e5e6eb;
+}
+
+.flex {
+  display: flex;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+.gap-8 {
+  gap: 8px;
+}
+
+.gap-16 {
+  gap: 16px;
+}
+
+.mb-12 {
+  margin-bottom: 12px;
+}
+
+.mb-16 {
+  margin-bottom: 16px;
+}
+
+.text-sm {
+  font-size: 12px;
+}
+
+.text-gray {
+  color: #86909c;
+}
+
+.text-red {
+  color: #f53f3f;
+}
+
+.text-orange {
+  color: #ff7d00;
+}
+
+.text-green {
+  color: #00b42a;
+}
+
+.input {
+  padding: 6px 12px;
+  border: 1px solid #e5e6eb;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.input:focus {
+  border-color: #3370ff;
+}
+
+.select {
+  padding: 6px 12px;
+  border: 1px solid #e5e6eb;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+  background: #fff;
+  cursor: pointer;
+}
+
+.stat-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.stat-card {
+  background: #fff;
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.stat-card .stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.stat-card .stat-label {
+  font-size: 12px;
+  color: #86909c;
+}
+
+.timeline-item {
+  display: flex;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #f2f3f5;
+}
+
+.timeline-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #3370ff;
+  margin-top: 6px;
+  flex-shrink: 0;
+}
+
+.timeline-content {
+  flex: 1;
+}
+
+.timeline-title {
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.timeline-meta {
+  font-size: 12px;
+  color: #86909c;
+}
+
+.empty {
+  text-align: center;
+  padding: 40px;
+  color: #86909c;
+}
+
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: #86909c;
+}
+
+.log-list {
+  margin-top: 8px;
+}
+
+.log-item {
+  padding: 12px;
+  border-bottom: 1px solid #f2f3f5;
+  transition: background 0.2s;
+}
+
+.log-item:hover {
+  background: #f7f8fa;
+}
+
+.log-item:last-child {
+  border-bottom: none;
+}
+
+.log-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.log-version {
+  font-weight: 600;
+  color: #3370ff;
+}
+
+.log-time {
+  font-size: 12px;
+  color: #86909c;
+}
+
+.log-content {
+  font-size: 13px;
+  color: #4e5969;
+  line-height: 1.6;
+}
+
+.text-link {
+  color: #3370ff;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.text-link:hover {
+  text-decoration: underline;
+}

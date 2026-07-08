@@ -1,0 +1,12 @@
+{
+  "projectType": "block",
+  "appType": "docs_addon",
+  "blockType": "pc",
+  "name": "飞书项目管理追踪器",
+  "version": "1.3.0",
+  "description": "飞书云文档小组件 - 项目管理与DDL播报",
+  "appid": "cli_aac7e6f6cdf8dcc0",
+  "blocks": [
+    "block"
+  ]
+}
