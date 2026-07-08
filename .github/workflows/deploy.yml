@@ -1,0 +1,41 @@
+name: Deploy
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy-server:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Deploy to server
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_HOST "
+            if [ ! -d $DEPLOY_PATH ]; then
+              mkdir -p $DEPLOY_PATH
+              cd $DEPLOY_PATH
+              git init
+              git remote add origin https://github.com/NepheLoudy/Qianli-Project-Management-Robot.git
+            fi
+            cd $DEPLOY_PATH
+            git fetch origin main
+            git reset --hard origin/main
+            
+            cd server
+            npm ci
+            
+            pm2 delete knowledge-tracker 2>/dev/null || true
+            pm2 start src/index.js --name knowledge-tracker
+          "
