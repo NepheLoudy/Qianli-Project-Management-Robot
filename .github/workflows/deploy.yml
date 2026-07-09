@@ -21,8 +21,9 @@ jobs:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
         run: |
-          ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_HOST "
+          ssh -o StrictHostKeyChecking=no -p $SERVER_PORT $SERVER_USER@$SERVER_HOST "
             if [ ! -d $DEPLOY_PATH ]; then
               mkdir -p $DEPLOY_PATH
               cd $DEPLOY_PATH
@@ -34,7 +35,7 @@ jobs:
             git reset --hard origin/main
             
             cd server
-            npm ci
+            npm ci --production
             
             pm2 delete knowledge-tracker 2>/dev/null || true
             pm2 start src/index.js --name knowledge-tracker
