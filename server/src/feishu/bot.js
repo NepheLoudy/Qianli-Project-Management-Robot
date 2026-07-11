@@ -88,7 +88,7 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects) {
       const indent = buildHierarchyIndent(p.level);
       elements.push({
         tag: 'markdown',
-        content: `${indent}${buildAtTag(p.owner)} **${p.category}组 - ${p.name}** - 已逾期 ${Math.abs(p.daysLeft)} 天\n${indent}优先级: ${p.priorityLabel}`,
+        content: `${indent}${buildAtTag(p.owner)} **${p.category}组 - ${p.name}** - 已逾期 ${Math.abs(p.daysLeft)} 天\n${indent}优先级: ${p.priorityLabel}，截止: ${p.ddlFormatted}`,
       });
     });
     elements.push({ tag: 'hr' });
@@ -101,9 +101,10 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects) {
     });
     urgentProjects.forEach(p => {
       const indent = buildHierarchyIndent(p.level);
+      const daysLabel = p.daysLeft === 0 ? '今天到期' : `还剩 ${p.daysLeft} 天`;
       elements.push({
         tag: 'markdown',
-        content: `${indent}${buildAtTag(p.owner)} **${p.category}组 - ${p.name}** - 还剩 ${p.daysLeft} 天\n${indent}优先级: ${p.priorityLabel}，截止: ${p.ddl}`,
+        content: `${indent}${buildAtTag(p.owner)} **${p.category}组 - ${p.name}** - ${daysLabel}\n${indent}优先级: ${p.priorityLabel}，截止: ${p.ddlFormatted}`,
       });
     });
     elements.push({ tag: 'hr' });
