@@ -193,7 +193,7 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
     elements.push({ tag: 'hr' });
     elements.push({
       tag: 'markdown',
-      content: `> ${quote.words}\n> —— ${quote.person || '佚名'}`,
+      content: `> ${quote.words} by ${quote.person || '佚名'}`,
     });
   }
 
