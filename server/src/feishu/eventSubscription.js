@@ -2,6 +2,7 @@ const lark = require('@larksuiteoapi/node-sdk');
 const config = require('../config');
 const keywordService = require('../services/keywordService');
 const chatService = require('../services/chatService');
+const ddlConfirmService = require('../services/ddlConfirmService');
 
 let wsClient = null;
 
@@ -30,7 +31,17 @@ function startEventSubscription() {
     'im.message.receive_v1': async (data) => {
       try {
         const chatId = data.message?.chat_id;
-        console.log('[事件订阅] 收到消息事件:', data.message?.message_id, 'chat_id:', chatId);
+        const chatType = data.message?.chat_type || data.message?.chatMode;
+        console.log('[事件订阅] 收到消息事件:', data.message?.message_id, 'chat_id:', chatId, 'chat_type:', chatType);
+
+        // 优先处理 owner 私聊回复（DDL逾期确认）
+        if (chatType === 'p2p') {
+          const confirmResult = await ddlConfirmService.handleP2PReply(data);
+          if (confirmResult.handled) {
+            console.log('[事件订阅] DDL确认服务已处理:', confirmResult.reply || confirmResult.reason);
+            return;
+          }
+        }
 
         // @机器人对话：如果配置了 CHAT_CHAT_ID，则只处理指定群的消息
         if (!config.chat.chatId || chatId === config.chat.chatId) {

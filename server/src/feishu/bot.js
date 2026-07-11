@@ -170,6 +170,25 @@ async function sendTextToChat(chatId, text) {
   return res.data;
 }
 
+// 通过 open_id 向用户发送私聊文本消息
+async function sendTextToUser(openId, text) {
+  const res = await requestAPI(
+    'POST',
+    '/im/v1/messages?receive_id_type=open_id',
+    {
+      receive_id: openId,
+      msg_type: 'text',
+      content: JSON.stringify({ text }),
+    }
+  );
+
+  if (res.code !== 0) {
+    throw new Error(`发送私聊消息失败: ${res.msg} (code: ${res.code})`);
+  }
+
+  return res.data;
+}
+
 async function sendCardToChat(chatId, cardContent) {
   const res = await requestAPI(
     'POST',
@@ -228,6 +247,7 @@ module.exports = {
   buildDDLReportCard,
   sendDDLReport,
   sendTextToChat,
+  sendTextToUser,
   sendCardToChat,
   replyTextMessage,
   replyCardMessage,

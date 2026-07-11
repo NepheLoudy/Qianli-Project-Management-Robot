@@ -167,6 +167,12 @@ app.post('/api/feishu/event', async (req, res) => {
   }
 
   if (header?.event_type === 'im.message.receive_v1') {
+    if (config.feishuEvent.useLongConnection) {
+      console.log('[HTTP回调] 已启用长连接模式，跳过HTTP回调消息处理');
+      res.json({ code: 0, msg: 'success' });
+      return;
+    }
+    
     setImmediate(async () => {
       try {
         const chatResult = await chatService.processChatMessage(event);

@@ -9,7 +9,11 @@
   },
   {
     "scope": "im:message:send_as_bot",
-    "description": "以应用身份发送消息，用于机器人回复用户指令"
+    "description": "以应用身份发送消息，用于机器人回复用户指令及主动私聊 owner"
+  },
+  {
+    "scope": "im:message.p2p_msg:readonly",
+    "description": "读取用户发给机器人的单聊消息，用于接收 owner 对逾期确认的私聊回复"
   },
   {
     "scope": "im:chat",

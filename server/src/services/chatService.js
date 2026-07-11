@@ -172,6 +172,16 @@ async function processChatMessage(event) {
   const message = event.message;
   if (!message) return { handled: false, reason: '无消息内容' };
 
+  const chatType = message.chat_type || message.chatMode;
+  const isGroup = chatType === 'group';
+
+  console.log('[对话服务] 收到消息 - chat_type:', chatType, 'mentions:', JSON.stringify(message.mentions || []), 'message_id:', message.message_id);
+
+  if (isGroup && !isMentionedBot(message)) {
+    console.log('[对话服务] 跳过 - 群聊未@机器人');
+    return { handled: false, reason: '群聊未@机器人' };
+  }
+
   // 消息去重：防止长连接和 HTTP 回调同时处理同一条消息
   if (message.message_id) {
     if (processedMessageIds.has(message.message_id)) {
@@ -183,13 +193,6 @@ async function processChatMessage(event) {
       const firstKey = processedMessageIds.values().next().value;
       processedMessageIds.delete(firstKey);
     }
-  }
-
-  const chatType = message.chat_type || message.chatMode;
-  const isGroup = chatType === 'group';
-
-  if (isGroup && !isMentionedBot(message)) {
-    return { handled: false, reason: '群聊未@机器人' };
   }
 
   const text = extractTextWithoutMention(message);
