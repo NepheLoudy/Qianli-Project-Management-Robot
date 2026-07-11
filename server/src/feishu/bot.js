@@ -1,5 +1,61 @@
 const config = require('../config');
 const { requestAPI } = require('./client');
+const bitable = require('./bitable');
+
+// 语录缓存（避免每次播报都重新拉取）
+let quoteCache = null;
+let quoteCacheTime = 0;
+const QUOTE_CACHE_TTL = 60 * 60 * 1000; // 1小时缓存
+
+async function getRandomQuote() {
+  const tableId = config.bitable.quoteTableId;
+  if (!tableId) {
+    console.warn('[语录] 未配置语录表ID，跳过');
+    return null;
+  }
+
+  const now = Date.now();
+  if (quoteCache && now - quoteCacheTime < QUOTE_CACHE_TTL) {
+    return pickRandomQuote(quoteCache);
+  }
+
+  try {
+    const records = await bitable.getAllRecords(tableId);
+    const quotes = [];
+    for (const record of records) {
+      const fields = record.fields;
+      const wordsRaw = fields.words;
+      const personRaw = fields.person;
+      if (!wordsRaw) continue;
+
+      let words = '';
+      if (typeof wordsRaw === 'string') words = wordsRaw;
+      else if (Array.isArray(wordsRaw) && wordsRaw.length > 0) words = wordsRaw[0]?.text || '';
+      else if (wordsRaw.text) words = wordsRaw.text;
+
+      let person = '';
+      if (typeof personRaw === 'string') person = personRaw;
+      else if (Array.isArray(personRaw) && personRaw.length > 0) person = personRaw[0]?.text || '';
+      else if (personRaw && personRaw.text) person = personRaw.text;
+
+      if (words) quotes.push({ words: words.trim(), person: person.trim() });
+    }
+
+    quoteCache = quotes;
+    quoteCacheTime = now;
+    console.log(`[语录] 已缓存 ${quotes.length} 条语录`);
+    return pickRandomQuote(quotes);
+  } catch (err) {
+    console.error('[语录] 获取失败:', err.message);
+    return null;
+  }
+}
+
+function pickRandomQuote(quotes) {
+  if (!quotes || quotes.length === 0) return null;
+  const idx = Math.floor(Math.random() * quotes.length);
+  return quotes[idx];
+}
 
 async function sendMessage(cardContent) {
   const webhookUrl = config.bot.webhookUrl;
@@ -69,7 +125,7 @@ function buildHierarchyIndent(level) {
   return '  '.repeat(level);
 }
 
-function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects) {
+function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote) {
   const elements = [];
 
   elements.push({
@@ -132,6 +188,15 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects) {
     });
   }
 
+  // 每日语录
+  if (quote) {
+    elements.push({ tag: 'hr' });
+    elements.push({
+      tag: 'markdown',
+      content: `> ${quote.words}\n> —— ${quote.person || '佚名'}`,
+    });
+  }
+
   return {
     config: {
       wide_screen_mode: true,
@@ -148,8 +213,8 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects) {
   };
 }
 
-async function sendDDLReport(overdueProjects, urgentProjects, weekProjects) {
-  const card = buildDDLReportCard(overdueProjects, urgentProjects, weekProjects);
+async function sendDDLReport(overdueProjects, urgentProjects, weekProjects, quote) {
+  const card = buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote);
   return sendMessage(card);
 }
 
@@ -247,6 +312,7 @@ module.exports = {
   sendTextMessage,
   buildDDLReportCard,
   sendDDLReport,
+  getRandomQuote,
   sendTextToChat,
   sendTextToUser,
   sendCardToChat,

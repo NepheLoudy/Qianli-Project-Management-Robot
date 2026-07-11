@@ -1,6 +1,6 @@
 const cron = require('node-cron');
 const projectService = require('../services/projectService');
-const { sendDDLReport } = require('../feishu/bot');
+const { sendDDLReport, getRandomQuote } = require('../feishu/bot');
 const ddlConfirmService = require('../services/ddlConfirmService');
 const config = require('../config');
 
@@ -12,7 +12,13 @@ async function runDDLBroadcast() {
   try {
     const { overdue, urgent, week } = await projectService.getDDLForBroadcastWithHierarchy();
 
-    const result = await sendDDLReport(overdue, urgent, week);
+    // 获取随机语录
+    const quote = await getRandomQuote();
+    if (quote) {
+      console.log(`[DDL播报] 今日语录: "${quote.words}" by ${quote.person || '佚名'}`);
+    }
+
+    const result = await sendDDLReport(overdue, urgent, week, quote);
 
     broadcastHistory.unshift({
       time: new Date().toISOString(),

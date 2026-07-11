@@ -12,6 +12,7 @@ module.exports = {
     projectTableId: process.env.BITABLE_PROJECT_TABLE_ID || '',
     logTableId: process.env.BITABLE_LOG_TABLE_ID || '',
     keywordTableId: process.env.BITABLE_KEYWORD_TABLE_ID || '',
+    quoteTableId: process.env.BITABLE_QUOTE_TABLE_ID || 'tblGLs09KVReMYHk',
   },
   feishuEvent: {
     verificationToken: process.env.FEISHU_VERIFICATION_TOKEN || '',
