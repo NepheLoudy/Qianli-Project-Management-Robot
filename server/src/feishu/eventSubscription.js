@@ -50,17 +50,25 @@ function startEventSubscription() {
           }
         }
 
-        // @机器人对话：如果配置了 CHAT_CHAT_ID，则只处理指定群的消息
-        if (!config.chat.chatId || chatId === config.chat.chatId) {
+        // @机器人对话：检查是否在已配置的对话群中（owner群 或 contributers群）
+        const chatCtx = config.getChatContext(chatId);
+        if (chatCtx) {
           const chatResult = await chatService.processChatMessage(data);
           if (chatResult.handled) {
-            console.log('[事件订阅] 对话服务已处理:', chatResult.isCommand ? '指令=' + chatResult.command : '正常对话');
+            console.log('[事件订阅] 对话服务已处理:', chatResult.isCommand ? '指令=' + chatResult.command : '正常对话', `(${chatCtx.label})`);
+            return;
+          }
+        } else if (!config.chat.chatId && !config.bot2.chatId) {
+          // 都没配置的话，所有群都响应（兼容旧行为）
+          const chatResult = await chatService.processChatMessage(data);
+          if (chatResult.handled) {
+            console.log('[事件订阅] 对话服务已处理:', chatResult.isCommand ? '指令=' + chatResult.command : '正常对话', '(无配置，全群响应)');
             return;
           }
         }
 
         // 群聊中检查 DDL 逾期确认回复（降级到群聊后，用户在群里回复）
-        if (chatType === 'group' && (chatId === config.chat.chatId || chatId === config.keyword.chatId)) {
+        if (chatType === 'group' && chatCtx) {
           const confirmResult = await ddlConfirmService.handleReply(data);
           if (confirmResult.handled) {
             console.log('[事件订阅] DDL确认服务已处理:', confirmResult.reply || confirmResult.reason);

@@ -25,6 +25,7 @@ module.exports = {
   },
   bot2: {
     webhookUrl: process.env.BOT2_WEBHOOK_URL || '',
+    chatId: process.env.BOT2_CHAT_ID || '',
   },
   keyword: {
     chatId: process.env.KEYWORD_CHAT_ID || '',
@@ -42,3 +43,36 @@ module.exports = {
     alertDays: parseInt(process.env.DDL_ALERT_DAYS || '2', 10),
   },
 };
+
+/**
+ * 根据 chatId 获取对应群的配置上下文
+ * @param {string} chatId
+ * @returns {{ chatId: string, webhookUrl: string, mentionField: string, filter: string, label: string } | null}
+ */
+function getChatContext(chatId) {
+  if (!chatId) return null;
+
+  if (chatId === module.exports.chat.chatId) {
+    return {
+      chatId: module.exports.chat.chatId,
+      webhookUrl: module.exports.bot.webhookUrl,
+      mentionField: 'owner',
+      filter: 'owner',
+      label: 'owner群',
+    };
+  }
+
+  if (chatId === module.exports.bot2.chatId) {
+    return {
+      chatId: module.exports.bot2.chatId,
+      webhookUrl: module.exports.bot2.webhookUrl,
+      mentionField: 'contributers',
+      filter: 'contributers',
+      label: 'contributers群',
+    };
+  }
+
+  return null;
+}
+
+module.exports.getChatContext = getChatContext;

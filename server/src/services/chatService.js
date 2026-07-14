@@ -92,11 +92,23 @@ async function handleStatusCommand() {
   return lines.join('\n');
 }
 
-async function handleTestDDLCommand() {
+async function handleTestDDLCommand(chatCtx) {
   try {
-    const { runDDLBroadcast } = require('../cron');
-    await runDDLBroadcast();
-    return '✅ DDL测试播报已发送，请查看群消息';
+    const projectService = require('./projectService');
+    const { sendDDLReport, getRandomQuote } = require('../feishu/bot');
+
+    const allProjects = await projectService.getProjects();
+    const quote = await getRandomQuote();
+    const filter = chatCtx?.filter || 'all';
+    const mentionField = chatCtx?.mentionField || 'owner';
+    const webhookUrl = chatCtx?.webhookUrl;
+
+    const { overdue, urgent, week } = await projectService.getDDLForBroadcastWithHierarchy(filter, allProjects);
+
+    await sendDDLReport(overdue, urgent, week, quote, { webhookUrl, mentionField });
+
+    const label = chatCtx?.label || '默认';
+    return `✅ DDL测试播报已发送（${label}）\n逾期:${overdue.length} 紧急:${urgent.length} 本周:${week.length}`;
   } catch (err) {
     console.error('测试DDL播报失败:', err);
     return `❌ 测试播报失败：${err.message}`;
@@ -201,15 +213,17 @@ async function processChatMessage(event) {
   const senderId = event.sender?.sender_id?.open_id || event.sender?.sender_id?.user_id || '';
   const senderName = event.sender?.sender_id?.name || '';
 
+  const chatCtx = config.getChatContext(message.chat_id);
+
   let replyText = '';
 
   const cmd = parseCommand(text);
   if (cmd) {
-    console.log('[对话服务] 解析到指令:', cmd.command, '参数:', cmd.args);
+    console.log('[对话服务] 解析到指令:', cmd.command, '参数:', cmd.args, '群:', chatCtx?.label || '未知');
     const handler = commandHandlers[cmd.command];
     if (handler) {
       try {
-        replyText = await handler(cmd.args);
+        replyText = await handler(cmd.args, chatCtx);
       } catch (err) {
         console.error('[对话服务] 指令执行失败:', err);
         replyText = `❌ 指令执行失败：${err.message}`;
