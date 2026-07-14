@@ -70,7 +70,7 @@ async function processMeetingMessage(event) {
   const links = extractMeetingLinks(text);
   const senderId = event.sender?.sender_id?.open_id || event.sender?.sender_id?.user_id || '';
 
-  let replyText = '@所有人 📢 收到会议通知！';
+  let replyText = '<at user_id="all">所有人</at> 📢 收到会议通知！';
   if (links.length > 0) {
     replyText += '\n会议链接：';
     links.forEach(link => {
