@@ -1,6 +1,7 @@
 const bot = require('../feishu/bot');
 const projectService = require('./projectService');
 const keywordService = require('./keywordService');
+const config = require('../config');
 
 // key: owner open_id, value: 数组 [{ projectId, projectName, ownerName, sentAt }]
 const pendingConfirmations = new Map();
@@ -10,6 +11,10 @@ const processedMessageIds = new Set();
 
 // 待确认记录的最大保留时间（7天），防止无限堆积
 const PENDING_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+function buildAtTag(openId, name) {
+  return `<at id="${openId}">${name || '用户'}</at>`;
+}
 
 /**
  * 向逾期项目的 owner 私聊发送确认消息
@@ -32,7 +37,7 @@ async function sendOverdueConfirmation(project) {
   const overdueDays = Math.abs(project.daysLeft);
   const ownerName = project.ownerName || '同学';
 
-  const text = [
+  const p2pText = [
     `⚠️ 项目逾期提醒`,
     ``,
     `${ownerName}，你负责的以下项目已逾期：`,
@@ -46,9 +51,22 @@ async function sendOverdueConfirmation(project) {
     `• 回复 "否" - 状态保持不变，继续提醒`,
   ].join('\n');
 
+  const groupText = [
+    `⚠️ ${buildAtTag(ownerOpenId, ownerName)} 项目逾期提醒`,
+    ``,
+    `你负责的项目「${project.name}」已逾期 ${overdueDays} 天，请及时处理。`,
+    `组别：${project.category || '其他'} | 截止日期：${project.ddl}`,
+    ``,
+    `请在群内回复 "是" 或 "否" 确认项目状态：`,
+    `• 回复 "是" → 我会帮你标记为已完成`,
+    `• 回复 "否" → 状态保持不变，继续提醒`,
+  ].join('\n');
+
+  const chatId = config.chat.chatId;
+
   try {
-    await bot.sendTextToUser(ownerOpenId, text);
-    console.log(`[DDL确认] 已向 ${ownerName}(${ownerOpenId}) 发送项目 "${project.name}" 的确认请求`);
+    await bot.sendTextToUser(ownerOpenId, p2pText);
+    console.log(`[DDL确认] 已向 ${ownerName}(${ownerOpenId}) 发送项目 "${project.name}" 的确认请求（私聊）`);
 
     existing.push({
       projectId: project.id,
@@ -56,16 +74,38 @@ async function sendOverdueConfirmation(project) {
       ownerName,
       ownerOpenId,
       sentAt: Date.now(),
+      sentMode: 'p2p',
     });
     pendingConfirmations.set(ownerOpenId, existing);
-    return { sent: true };
+    return { sent: true, mode: 'p2p' };
   } catch (err) {
     const errMsg = err.message || '';
-    // 针对飞书特定错误码做友好提示
-    if (errMsg.includes('230053')) {
+    if (errMsg.includes('230013')) {
+      console.warn(`[DDL确认] 机器人对用户 ${ownerName}(${ownerOpenId}) 没有可用性，降级到群聊 @提醒`);
+      if (!chatId) {
+        console.error('[DDL确认] 未配置群聊 ID，无法降级发送');
+        return { sent: false, reason: '未配置群聊 ID' };
+      }
+      try {
+        await bot.sendTextToChat(chatId, groupText);
+        console.log(`[DDL确认] 已在群聊 ${chatId} 中 @${ownerName} 发送项目 "${project.name}" 的确认请求（群聊降级）`);
+
+        existing.push({
+          projectId: project.id,
+          projectName: project.name,
+          ownerName,
+          ownerOpenId,
+          sentAt: Date.now(),
+          sentMode: 'group',
+        });
+        pendingConfirmations.set(ownerOpenId, existing);
+        return { sent: true, mode: 'group' };
+      } catch (groupErr) {
+        console.error(`[DDL确认] 群聊发送也失败 (${project.name}):`, groupErr.message);
+        return { sent: false, reason: `私聊失败+群聊失败: ${groupErr.message}` };
+      }
+    } else if (errMsg.includes('230053')) {
       console.error(`[DDL确认] 用户 ${ownerName}(${ownerOpenId}) 已设置不再接收机器人消息，跳过`);
-    } else if (errMsg.includes('230013')) {
-      console.error(`[DDL确认] 机器人对用户 ${ownerName}(${ownerOpenId}) 没有可用性，请检查应用可见范围`);
     } else if (errMsg.includes('230002')) {
       console.error(`[DDL确认] 机器人不在用户 ${ownerName} 的群组中（不应发生在 p2p 场景）`);
     } else {
@@ -83,14 +123,12 @@ function parseConfirmationReply(text) {
   if (!text) return null;
   const t = text.trim().toLowerCase();
 
-  // 明确是/否关键词
   const yesPatterns = /^(是|yes|y|确认|完成|已完成|done|ok)$/i;
   const noPatterns = /^(否|no|n|未完成|没完成|not yet|pending)$/i;
 
   if (yesPatterns.test(t)) return 'yes';
   if (noPatterns.test(t)) return 'no';
 
-  // 包含关键词（弱匹配，仅当文本较短时）
   if (t.length <= 10) {
     if (t.includes('是') && !t.includes('不是') && !t.includes('否')) return 'yes';
     if (t.includes('否') || t.includes('没完成') || t.includes('未完成')) return 'no';
@@ -100,17 +138,15 @@ function parseConfirmationReply(text) {
 }
 
 /**
- * 处理 owner 的私聊回复
+ * 处理 owner 的回复（支持私聊和群聊）
  * @param {Object} event 飞书事件 data
  * @returns {Promise<{handled: boolean, reason?: string}>}
  */
-async function handleP2PReply(event) {
+async function handleReply(event) {
   const message = event.message;
   if (!message) return { handled: false, reason: '无消息内容' };
 
-  // 仅处理私聊（p2p）消息
   const chatType = message.chat_type || message.chatMode;
-  if (chatType !== 'p2p') return { handled: false, reason: '非私聊消息' };
 
   // 消息去重
   if (message.message_id) {
@@ -136,9 +172,8 @@ async function handleP2PReply(event) {
   }
 
   const text = keywordService.extractTextContent(message);
-  console.log(`[DDL确认] 收到 ${senderId} 的私聊回复:`, text);
+  console.log(`[DDL确认] 收到 ${senderId} 的回复 (${chatType}):`, text);
 
-  // 指令消息（以 / 开头）不拦截，让 chatService 处理
   if (text && text.trim().startsWith('/')) {
     console.log('[DDL确认] 检测到指令消息，跳过确认流程');
     return { handled: false, reason: '指令消息' };
@@ -147,18 +182,21 @@ async function handleP2PReply(event) {
   const reply = parseConfirmationReply(text);
 
   if (!reply) {
-    // 引导用户正确回复
     const pending = pendingList[0];
-    const tipText = `未识别你的回复。请回复 "是" 或 "否" 来确认项目 "${pending.projectName}" 是否已完成。\n• "是" → 标记为已完成\n• "否" → 保持当前状态`;
+    let tipText = `未识别你的回复。请回复 "是" 或 "否" 来确认项目 "${pending.projectName}" 是否已完成。\n• "是" → 标记为已完成\n• "否" → 保持当前状态`;
+
     try {
-      await bot.sendTextToUser(senderId, tipText);
+      if (chatType === 'p2p') {
+        await bot.sendTextToUser(senderId, tipText);
+      } else {
+        await bot.sendTextToChat(config.chat.chatId, `${buildAtTag(senderId, pending.ownerName)} ${tipText}`);
+      }
     } catch (err) {
       console.error('[DDL确认] 发送引导提示失败:', err.message);
     }
     return { handled: true, reason: '未识别回复' };
   }
 
-  // 取最早发送的待确认项目
   const pending = pendingList.shift();
   if (pendingList.length === 0) {
     pendingConfirmations.delete(senderId);
@@ -168,31 +206,43 @@ async function handleP2PReply(event) {
     try {
       await projectService.updateProject(pending.projectId, { status: 'completed' });
       console.log(`[DDL确认] 已将项目 "${pending.projectName}" 状态更新为 completed`);
-      await bot.sendTextToUser(
-        senderId,
-        `✅ 已将项目 "${pending.projectName}" 的状态更新为 completed。\n如需修改，请在看板中手动调整。`
-      );
+
+      let successText = `✅ 已将项目 "${pending.projectName}" 的状态更新为 completed。\n如需修改，请在看板中手动调整。`;
+      if (chatType === 'p2p') {
+        await bot.sendTextToUser(senderId, successText);
+      } else {
+        await bot.sendTextToChat(config.chat.chatId, `${buildAtTag(senderId, pending.ownerName)} ${successText}`);
+      }
     } catch (err) {
       console.error(`[DDL确认] 更新项目状态失败 (${pending.projectName}):`, err.message);
-      await bot.sendTextToUser(
-        senderId,
-        `❌ 更新项目 "${pending.projectName}" 状态失败：${err.message}\n请手动在看板中更新。`
-      );
-      // 失败时把任务放回队列头部，便于重试
+      let failText = `❌ 更新项目 "${pending.projectName}" 状态失败：${err.message}\n请手动在看板中更新。`;
+      if (chatType === 'p2p') {
+        await bot.sendTextToUser(senderId, failText);
+      } else {
+        await bot.sendTextToChat(config.chat.chatId, `${buildAtTag(senderId, pending.ownerName)} ${failText}`);
+      }
       const list = pendingConfirmations.get(senderId) || [];
       list.unshift(pending);
       pendingConfirmations.set(senderId, list);
     }
   } else {
-    // reply === 'no'
     console.log(`[DDL确认] 用户 ${senderId} 选择保持项目 "${pending.projectName}" 当前状态`);
-    await bot.sendTextToUser(
-      senderId,
-      `📋 已记录你的回复，项目 "${pending.projectName}" 状态保持不变。请尽快在看板中更新进度。`
-    );
+    let keepText = `📋 已记录你的回复，项目 "${pending.projectName}" 状态保持不变。请尽快在看板中更新进度。`;
+    if (chatType === 'p2p') {
+      await bot.sendTextToUser(senderId, keepText);
+    } else {
+        await bot.sendTextToChat(config.chat.chatId, `${buildAtTag(senderId, pending.ownerName)} ${keepText}`);
+      }
   }
 
   return { handled: true, reply };
+}
+
+/**
+ * 处理 owner 的私聊回复（兼容旧接口）
+ */
+async function handleP2PReply(event) {
+  return handleReply(event);
 }
 
 /**

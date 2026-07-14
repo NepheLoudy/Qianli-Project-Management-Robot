@@ -3,6 +3,7 @@ const config = require('../config');
 const keywordService = require('../services/keywordService');
 const chatService = require('../services/chatService');
 const ddlConfirmService = require('../services/ddlConfirmService');
+const meetingReminderService = require('../services/meetingReminderService');
 
 let wsClient = null;
 
@@ -58,6 +59,15 @@ function startEventSubscription() {
           }
         }
 
+        // 群聊中检查 DDL 逾期确认回复（降级到群聊后，用户在群里回复）
+        if (chatType === 'group' && (chatId === config.chat.chatId || chatId === config.keyword.chatId)) {
+          const confirmResult = await ddlConfirmService.handleReply(data);
+          if (confirmResult.handled) {
+            console.log('[事件订阅] DDL确认服务已处理:', confirmResult.reply || confirmResult.reason);
+            return;
+          }
+        }
+
         // 关键词监听：如果配置了 KEYWORD_CHAT_ID，则只处理指定群的消息
         if (!config.keyword.chatId || chatId === config.keyword.chatId) {
           const kwResult = await keywordService.processMessageEvent(data);
@@ -68,6 +78,14 @@ function startEventSubscription() {
           }
         } else {
           console.log('[事件订阅] 关键词监听跳过：非目标群 (chat_id:', chatId, ')');
+        }
+
+        // 会议提醒：检测会议关键词或飞书会议链接
+        if (chatType === 'group') {
+          const meetingResult = await meetingReminderService.processMeetingMessage(data);
+          if (meetingResult.handled && meetingResult.triggered) {
+            console.log('[事件订阅] 会议提醒已触发:', meetingResult.hasKeyword ? '关键词' : '', meetingResult.hasLink ? '链接' : '');
+          }
         }
       } catch (err) {
         console.error('[事件订阅] 处理消息事件失败:', err.message);

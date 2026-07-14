@@ -29,6 +29,9 @@ module.exports = {
   chat: {
     chatId: process.env.CHAT_CHAT_ID || '',
   },
+  meeting: {
+    chatIds: process.env.MEETING_CHAT_IDS ? process.env.MEETING_CHAT_IDS.split(',') : [],
+  },
   cron: {
     schedule: process.env.CRON_SCHEDULE || '0 0 12 * * *',
   },
