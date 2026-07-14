@@ -57,15 +57,15 @@ function pickRandomQuote(quotes) {
   return quotes[idx];
 }
 
-async function sendMessage(cardContent) {
-  const webhookUrl = config.bot.webhookUrl;
+async function sendMessage(cardContent, webhookUrl) {
+  const url = webhookUrl || config.bot.webhookUrl;
 
-  if (!webhookUrl) {
+  if (!url) {
     console.warn('未配置机器人 Webhook URL，跳过消息发送');
     return null;
   }
 
-  const res = await fetch(webhookUrl, {
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -115,9 +115,25 @@ async function sendTextMessage(text) {
   return data;
 }
 
-function buildAtTag(userId) {
+function buildAtTag(userId, name) {
   if (!userId) return '';
-  return `<at id="${userId}"></at>`;
+  return `<at id="${userId}">${name || ''}</at>`;
+}
+
+function buildMentionTags(project, mentionField) {
+  if (mentionField === 'contributers') {
+    if (!project.contributers || project.contributers.length === 0) return '';
+    return project.contributers.map(c => buildAtTag(c.id, c.name)).join(' ');
+  }
+  return buildAtTag(project.owner, project.ownerName);
+}
+
+function getMentionNames(project, mentionField) {
+  if (mentionField === 'contributers') {
+    if (!project.contributers || project.contributers.length === 0) return '未指派';
+    return project.contributers.map(c => c.name).join(', ');
+  }
+  return project.ownerName || '未指派';
 }
 
 function buildHierarchyIndent(level) {
@@ -125,7 +141,7 @@ function buildHierarchyIndent(level) {
   return '  '.repeat(level);
 }
 
-function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote) {
+function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote, mentionField = 'owner') {
   const elements = [];
 
   elements.push({
@@ -144,7 +160,7 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
       const indent = buildHierarchyIndent(p.level);
       elements.push({
         tag: 'markdown',
-        content: `${indent}${buildAtTag(p.owner)} **${p.category}组 - ${p.name}** - 已逾期 ${Math.abs(p.daysLeft)} 天\n${indent}优先级: ${p.priorityLabel}，截止: ${p.ddlFormatted}`,
+        content: `${indent}${buildMentionTags(p, mentionField)} **${p.category}组 - ${p.name}** - 已逾期 ${Math.abs(p.daysLeft)} 天\n${indent}优先级: ${p.priorityLabel}，截止: ${p.ddlFormatted}`,
       });
     });
     elements.push({ tag: 'hr' });
@@ -160,7 +176,7 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
       const daysLabel = p.daysLeft === 0 ? '今天到期' : `还剩 ${p.daysLeft} 天`;
       elements.push({
         tag: 'markdown',
-        content: `${indent}${buildAtTag(p.owner)} **${p.category}组 - ${p.name}** - ${daysLabel}\n${indent}优先级: ${p.priorityLabel}，截止: ${p.ddlFormatted}`,
+        content: `${indent}${buildMentionTags(p, mentionField)} **${p.category}组 - ${p.name}** - ${daysLabel}\n${indent}优先级: ${p.priorityLabel}，截止: ${p.ddlFormatted}`,
       });
     });
     elements.push({ tag: 'hr' });
@@ -173,7 +189,7 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
     });
     const weekText = weekProjects.map(p => {
       const indent = buildHierarchyIndent(p.level);
-      return `${indent}• ${buildAtTag(p.owner)} ${p.category}组 - ${p.name} - ${p.ownerName} - ${p.daysLeft}天`;
+      return `${indent}• ${getMentionNames(p, mentionField)} ${p.category}组 - ${p.name} - ${p.daysLeft}天`;
     }).join('\n');
     elements.push({
       tag: 'markdown',
@@ -213,9 +229,10 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
   };
 }
 
-async function sendDDLReport(overdueProjects, urgentProjects, weekProjects, quote) {
-  const card = buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote);
-  return sendMessage(card);
+async function sendDDLReport(overdueProjects, urgentProjects, weekProjects, quote, options = {}) {
+  const { webhookUrl, mentionField = 'owner' } = options;
+  const card = buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote, mentionField);
+  return sendMessage(card, webhookUrl);
 }
 
 async function sendTextToChat(chatId, text) {

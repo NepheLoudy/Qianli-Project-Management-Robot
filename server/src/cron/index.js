@@ -31,21 +31,40 @@ async function runDDLBroadcast() {
   while (attempt < RETRY_CONFIG.maxAttempts) {
     attempt++;
     try {
-      const { overdue, urgent, week } = await projectService.getDDLForBroadcastWithHierarchy();
+      // 一次性拉取所有项目，避免重复请求
+      const allProjects = await projectService.getProjects();
 
       const quote = await getRandomQuote();
       if (quote) {
         console.log(`[DDL播报] 今日语录: "${quote.words}" by ${quote.person || '佚名'}`);
       }
 
-      const result = await sendDDLReport(overdue, urgent, week, quote);
+      // 机器人1: 只播报 owner 有人的项目
+      const ownerData = await projectService.getDDLForBroadcastWithHierarchy('owner', allProjects);
+      const result1 = await sendDDLReport(ownerData.overdue, ownerData.urgent, ownerData.week, quote, {
+        webhookUrl: config.bot.webhookUrl,
+        mentionField: 'owner',
+      });
+      console.log(`[DDL播报] 机器人1(owner) - 逾期:${ownerData.overdue.length} 紧急:${ownerData.urgent.length} 本周:${ownerData.week.length}`);
+
+      // 机器人2: 只播报 contributers 有人的项目
+      if (config.bot2 && config.bot2.webhookUrl) {
+        const contribData = await projectService.getDDLForBroadcastWithHierarchy('contributers', allProjects);
+        const result2 = await sendDDLReport(contribData.overdue, contribData.urgent, contribData.week, quote, {
+          webhookUrl: config.bot2.webhookUrl,
+          mentionField: 'contributers',
+        });
+        console.log(`[DDL播报] 机器人2(contributers) - 逾期:${contribData.overdue.length} 紧急:${contribData.urgent.length} 本周:${contribData.week.length}`);
+      } else {
+        console.log('[DDL播报] 机器人2 未配置 webhookUrl，跳过 contributers 播报');
+      }
 
       broadcastHistory.unshift({
         time: new Date().toISOString(),
         type: 'ddl_broadcast',
-        overdueCount: overdue.length,
-        urgentCount: urgent.length,
-        weekCount: week.length,
+        ownerOverdue: ownerData.overdue.length,
+        ownerUrgent: ownerData.urgent.length,
+        ownerWeek: ownerData.week.length,
         success: true,
         attempts: attempt,
       });
@@ -54,9 +73,10 @@ async function runDDLBroadcast() {
         broadcastHistory.length = 50;
       }
 
-      console.log(`[DDL播报] 播报完成 - 逾期:${overdue.length} 紧急:${urgent.length} 本周:${week.length} (尝试: ${attempt})`);
+      console.log(`[DDL播报] 播报完成 (尝试: ${attempt})`);
 
-      const overdueConfirmTargets = overdue.filter(p => p.daysLeft <= -1);
+      // 逾期确认：基于 owner 过滤的数据
+      const overdueConfirmTargets = ownerData.overdue.filter(p => p.daysLeft <= -1);
       if (overdueConfirmTargets.length > 0) {
         console.log(`[DDL播报] 发现 ${overdueConfirmTargets.length} 个逾期项目，向 owner 发送确认请求`);
         const confirmResults = [];
@@ -72,7 +92,7 @@ async function runDDLBroadcast() {
         console.log('[DDL播报] 逾期确认发送结果:', JSON.stringify(confirmResults));
       }
 
-      return result;
+      return result1;
     } catch (err) {
       lastError = err;
       if (isFrequencyLimitError(err)) {

@@ -165,11 +165,20 @@ function recordToProject(record) {
     }
   }
 
+  // 解析 contributers（多选人员字段）
+  let contributers = [];
+  if (f.contributers && Array.isArray(f.contributers)) {
+    contributers = f.contributers
+      .map(c => ({ id: c.id || '', name: c.name || c.en_name || '' }))
+      .filter(c => c.id);
+  }
+
   return {
     id: record.record_id,
     name: f.name || '',
     owner: ownerId,
     ownerName: ownerName,
+    contributers,
     ddl: f.ddl,
     priority: f.priority || 'medium',
     status: f.status || 'pending',
@@ -206,8 +215,8 @@ async function getProjectsWithHierarchy() {
   return buildHierarchy(projects);
 }
 
-async function getDDLForBroadcastWithHierarchy() {
-  const projects = await getProjects();
+async function getDDLForBroadcastWithHierarchy(filter = 'all', preloadedProjects = null) {
+  const projects = preloadedProjects || await getProjects();
   const now = dayjs();
   const alertDays = config.ddl.alertDays;
 
@@ -229,6 +238,12 @@ async function getDDLForBroadcastWithHierarchy() {
 
   const hierarchy = buildHierarchy(allProjects);
 
+  function passesFilter(item) {
+    if (filter === 'owner') return !!item.owner;
+    if (filter === 'contributers') return item.contributers && item.contributers.length > 0;
+    return true;
+  }
+
   function collectQualifiedWithAncestors(items, ancestors = [], level = 0) {
     const result = { overdue: [], urgent: [], week: [] };
 
@@ -237,7 +252,7 @@ async function getDDLForBroadcastWithHierarchy() {
         ? [...ancestors, { ...item, level }]
         : ancestors;
 
-      if (item.status !== 'completed') {
+      if (item.status !== 'completed' && passesFilter(item)) {
         if (item.daysLeft < 0) {
           result.overdue.push(...currentAncestors);
         } else if (item.daysLeft <= alertDays) {

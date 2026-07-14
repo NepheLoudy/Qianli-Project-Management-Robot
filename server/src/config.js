@@ -23,6 +23,9 @@ module.exports = {
     name: process.env.BOT_NAME || '爆米花机',
     webhookUrl: process.env.BOT_WEBHOOK_URL || '',
   },
+  bot2: {
+    webhookUrl: process.env.BOT2_WEBHOOK_URL || '',
+  },
   keyword: {
     chatId: process.env.KEYWORD_CHAT_ID || '',
   },
