@@ -159,16 +159,36 @@ function startCronJobs() {
 
   console.log(`[定时任务] DDL播报已启动，调度规则: ${config.cron.schedule} (Asia/Shanghai)`);
   console.log(`[定时任务] 当前时间: ${new Date().toLocaleString('zh-CN')}`);
-  console.log(`[定时任务] 下次执行时间: ${ddlTask.nextDates(1)[0]?.toLocaleString('zh-CN') || '未知'}`);
+  console.log(`[定时任务] 下次执行时间: ${getNextExecutionTime(config.cron.schedule)}`);
 
   return { ddlTask };
+}
+
+function getNextExecutionTime(schedule) {
+  try {
+    const [second, minute, hour, day, month, weekday] = schedule.split(' ');
+    const now = new Date();
+    const next = new Date(now);
+    
+    next.setSeconds(parseInt(second) || 0);
+    next.setMinutes(parseInt(minute) || 0);
+    next.setHours(parseInt(hour) || 0);
+    
+    if (next <= now) {
+      next.setDate(next.getDate() + 1);
+    }
+    
+    return next.toLocaleString('zh-CN');
+  } catch (e) {
+    return '未知';
+  }
 }
 
 function getCronStatus() {
   return {
     running: !!ddlTask,
     schedule: config.cron.schedule,
-    nextExecution: ddlTask?.nextDates(1)[0]?.toISOString() || null,
+    nextExecution: getNextExecutionTime(config.cron.schedule),
   };
 }
 
