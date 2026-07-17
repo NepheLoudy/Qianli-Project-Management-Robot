@@ -22,6 +22,15 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function countQualified(nodes) {
+  let count = 0;
+  nodes.forEach(node => {
+    if (node.isQualified) count++;
+    if (node.children) count += countQualified(node.children);
+  });
+  return count;
+}
+
 async function runDDLBroadcast() {
   console.log('[DDL播报] 开始执行每日DDL播报...');
 
@@ -45,7 +54,10 @@ async function runDDLBroadcast() {
         webhookUrl: config.bot.webhookUrl,
         mentionField: 'owner',
       });
-      console.log(`[DDL播报] 机器人1(owner) - 逾期:${ownerData.overdue.length} 紧急:${ownerData.urgent.length} 本周:${ownerData.week.length}`);
+      const ownerOverdueCount = countQualified(ownerData.overdue);
+      const ownerUrgentCount = countQualified(ownerData.urgent);
+      const ownerWeekCount = countQualified(ownerData.week);
+      console.log(`[DDL播报] 机器人1(owner) - 逾期:${ownerOverdueCount} 紧急:${ownerUrgentCount} 本周:${ownerWeekCount}`);
 
       // 机器人2: 只播报 contributers 有人的项目
       if (config.bot2 && config.bot2.webhookUrl) {
@@ -54,7 +66,10 @@ async function runDDLBroadcast() {
           webhookUrl: config.bot2.webhookUrl,
           mentionField: 'contributers',
         });
-        console.log(`[DDL播报] 机器人2(contributers) - 逾期:${contribData.overdue.length} 紧急:${contribData.urgent.length} 本周:${contribData.week.length}`);
+        const contribOverdueCount = countQualified(contribData.overdue);
+        const contribUrgentCount = countQualified(contribData.urgent);
+        const contribWeekCount = countQualified(contribData.week);
+        console.log(`[DDL播报] 机器人2(contributers) - 逾期:${contribOverdueCount} 紧急:${contribUrgentCount} 本周:${contribWeekCount}`);
       } else {
         console.log('[DDL播报] 机器人2 未配置 webhookUrl，跳过 contributers 播报');
       }
@@ -62,9 +77,9 @@ async function runDDLBroadcast() {
       broadcastHistory.unshift({
         time: new Date().toISOString(),
         type: 'ddl_broadcast',
-        ownerOverdue: ownerData.overdue.length,
-        ownerUrgent: ownerData.urgent.length,
-        ownerWeek: ownerData.week.length,
+        ownerOverdue: ownerOverdueCount,
+        ownerUrgent: ownerUrgentCount,
+        ownerWeek: ownerWeekCount,
         success: true,
         attempts: attempt,
       });
@@ -75,8 +90,17 @@ async function runDDLBroadcast() {
 
       console.log(`[DDL播报] 播报完成 (尝试: ${attempt})`);
 
-      // 逾期确认：基于 owner 过滤的数据
-      const overdueConfirmTargets = ownerData.overdue.filter(p => p.daysLeft <= -1);
+      // 逾期确认：基于 owner 过滤的数据，递归收集所有逾期项目
+      const overdueConfirmTargets = [];
+      function collectOverdue(nodes) {
+        nodes.forEach(node => {
+          if (node.isQualified && node.ddlCategory === 'overdue') {
+            overdueConfirmTargets.push(node);
+          }
+          if (node.children) collectOverdue(node.children);
+        });
+      }
+      collectOverdue(ownerData.overdue);
       if (overdueConfirmTargets.length > 0) {
         console.log(`[DDL播报] 发现 ${overdueConfirmTargets.length} 个逾期项目，向 owner 发送确认请求`);
         const confirmResults = [];
@@ -116,16 +140,36 @@ async function runDDLBroadcast() {
   throw lastError;
 }
 
+let ddlTask = null;
+
 function startCronJobs() {
-  const ddlTask = cron.schedule(config.cron.schedule, () => {
-    runDDLBroadcast().catch(console.error);
+  if (ddlTask) {
+    console.log('[定时任务] 定时任务已存在，先停止旧任务');
+    ddlTask.stop();
+  }
+
+  ddlTask = cron.schedule(config.cron.schedule, () => {
+    console.log('[定时任务] 触发DDL播报');
+    runDDLBroadcast().catch(err => {
+      console.error('[定时任务] DDL播报失败:', err.message);
+    });
   }, {
     timezone: 'Asia/Shanghai',
   });
 
   console.log(`[定时任务] DDL播报已启动，调度规则: ${config.cron.schedule} (Asia/Shanghai)`);
+  console.log(`[定时任务] 当前时间: ${new Date().toLocaleString('zh-CN')}`);
+  console.log(`[定时任务] 下次执行时间: ${ddlTask.nextDates(1)[0]?.toLocaleString('zh-CN') || '未知'}`);
 
   return { ddlTask };
+}
+
+function getCronStatus() {
+  return {
+    running: !!ddlTask,
+    schedule: config.cron.schedule,
+    nextExecution: ddlTask?.nextDates(1)[0]?.toISOString() || null,
+  };
 }
 
 function getBroadcastHistory() {
@@ -136,4 +180,5 @@ module.exports = {
   startCronJobs,
   runDDLBroadcast,
   getBroadcastHistory,
+  getCronStatus,
 };

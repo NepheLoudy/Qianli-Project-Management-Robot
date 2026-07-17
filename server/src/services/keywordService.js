@@ -73,8 +73,42 @@ function extractTextContent(message) {
       return text;
     }
 
+    if (msgType === 'share_chat') {
+      const title = content.title || content.chat_name || '';
+      const description = content.description || '';
+      return `${title} ${description}`;
+    }
+
+    if (msgType === 'share_calendar') {
+      const title = content.title || '';
+      const description = content.description || '';
+      const agenda = content.agenda || '';
+      return `${title} ${description} ${agenda}`;
+    }
+
+    if (msgType === 'calendar_event') {
+      const title = content.title || '';
+      const description = content.description || '';
+      return `${title} ${description}`;
+    }
+
     if (msgType === 'interactive') {
-      return '';
+      let text = '';
+      const card = content.card || {};
+      const header = card.header || {};
+      const headerTitle = header.title || {};
+      text += headerTitle.content || '';
+      const elements = card.elements || [];
+      for (const element of elements) {
+        if (element.tag === 'div') {
+          const fields = element.fields || [];
+          for (const field of fields) {
+            const fieldText = field.text || {};
+            text += fieldText.content || '';
+          }
+        }
+      }
+      return text;
     }
 
     return '';

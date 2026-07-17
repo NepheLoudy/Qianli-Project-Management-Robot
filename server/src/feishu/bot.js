@@ -85,36 +85,6 @@ async function sendMessage(cardContent, webhookUrl) {
   return data;
 }
 
-async function sendTextMessage(text) {
-  const webhookUrl = config.bot.webhookUrl;
-
-  if (!webhookUrl) {
-    console.warn('未配置机器人 Webhook URL，跳过消息发送');
-    return null;
-  }
-
-  const res = await fetch(webhookUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      msg_type: 'text',
-      content: {
-        text: text,
-      },
-    }),
-  });
-
-  const data = await res.json();
-
-  if (data.code !== 0 && data.StatusCode !== 0) {
-    throw new Error(`发送消息失败: ${JSON.stringify(data)}`);
-  }
-
-  return data;
-}
-
 function buildAtTag(userId, name) {
   if (!userId) return '';
   return `<at id="${userId}">${name || ''}</at>`;
@@ -136,9 +106,57 @@ function getMentionNames(project, mentionField) {
   return project.ownerName || '未指派';
 }
 
-function buildHierarchyIndent(level) {
-  if (!level || level <= 0) return '';
-  return '  '.repeat(level);
+function buildTreePrefix(level, isLast, ancestors) {
+  if (level <= 0) return '';
+  let prefix = '';
+  for (let i = 0; i < level - 1; i++) {
+    prefix += ancestors[i] ? '   ' : '│  ';
+  }
+  prefix += isLast ? '└─ ' : '├─ ';
+  return prefix;
+}
+
+function renderTreeNode(node, mentionField, categoryInfo, ancestors = [], isLast = true) {
+  const { level, name, category, isQualified, daysLeft, ddlCategory, priorityLabel, ddlFormatted, children } = node;
+
+  const prefix = buildTreePrefix(level, isLast, ancestors);
+
+  let line = '';
+  if (isQualified) {
+    const mentionTags = buildMentionTags(node, mentionField);
+    let statusText = '';
+    if (ddlCategory === 'overdue') {
+      statusText = `已逾期 ${Math.abs(daysLeft)} 天`;
+    } else if (ddlCategory === 'urgent') {
+      statusText = daysLeft === 0 ? '今天到期' : `还剩 ${daysLeft} 天`;
+    } else if (ddlCategory === 'week') {
+      statusText = `${daysLeft}天后到期`;
+    }
+    line = `${prefix}${mentionTags} **${category}组 - ${name}** - ${statusText}\n${'   '.repeat(level)} 优先级: ${priorityLabel}，截止: ${ddlFormatted}`;
+  } else {
+    line = `${prefix}**${category}组 - ${name}**`;
+  }
+
+  const result = [line];
+
+  if (children && children.length > 0) {
+    children.forEach((child, index) => {
+      const childIsLast = index === children.length - 1;
+      const newAncestors = [...ancestors, childIsLast];
+      result.push(...renderTreeNode(child, mentionField, categoryInfo, newAncestors, childIsLast));
+    });
+  }
+
+  return result;
+}
+
+function countQualifiedNodes(nodes) {
+  let count = 0;
+  nodes.forEach(node => {
+    if (node.isQualified) count++;
+    if (node.children) count += countQualifiedNodes(node.children);
+  });
+  return count;
 }
 
 function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote, mentionField = 'owner') {
@@ -151,53 +169,57 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
 
   elements.push({ tag: 'hr' });
 
-  if (overdueProjects.length > 0) {
+  const overdueCount = countQualifiedNodes(overdueProjects);
+  if (overdueCount > 0) {
     elements.push({
       tag: 'markdown',
-      content: `**🔴 已逾期项目（${overdueProjects.length}个）**`,
+      content: `**🔴 已逾期项目（${overdueCount}个）**`,
     });
-    overdueProjects.forEach(p => {
-      const indent = buildHierarchyIndent(p.level);
+    overdueProjects.forEach((root, index) => {
+      const isLast = index === overdueProjects.length - 1;
+      const lines = renderTreeNode(root, mentionField, 'overdue', [], isLast);
       elements.push({
         tag: 'markdown',
-        content: `${indent}${buildMentionTags(p, mentionField)} **${p.category}组 - ${p.name}** - 已逾期 ${Math.abs(p.daysLeft)} 天\n${indent}优先级: ${p.priorityLabel}，截止: ${p.ddlFormatted}`,
+        content: lines.join('\n'),
       });
     });
     elements.push({ tag: 'hr' });
   }
 
-  if (urgentProjects.length > 0) {
+  const urgentCount = countQualifiedNodes(urgentProjects);
+  if (urgentCount > 0) {
     elements.push({
       tag: 'markdown',
-      content: `**🟠 2天内到期（${urgentProjects.length}个）**`,
+      content: `**🟠 2天内到期（${urgentCount}个）**`,
     });
-    urgentProjects.forEach(p => {
-      const indent = buildHierarchyIndent(p.level);
-      const daysLabel = p.daysLeft === 0 ? '今天到期' : `还剩 ${p.daysLeft} 天`;
+    urgentProjects.forEach((root, index) => {
+      const isLast = index === urgentProjects.length - 1;
+      const lines = renderTreeNode(root, mentionField, 'urgent', [], isLast);
       elements.push({
         tag: 'markdown',
-        content: `${indent}${buildMentionTags(p, mentionField)} **${p.category}组 - ${p.name}** - ${daysLabel}\n${indent}优先级: ${p.priorityLabel}，截止: ${p.ddlFormatted}`,
+        content: lines.join('\n'),
       });
     });
     elements.push({ tag: 'hr' });
   }
 
-  if (weekProjects.length > 0) {
+  const weekCount = countQualifiedNodes(weekProjects);
+  if (weekCount > 0) {
     elements.push({
       tag: 'markdown',
-      content: `**📋 本周到期概览（${weekProjects.length}个）**`,
+      content: `**📋 本周到期概览（${weekCount}个）**`,
     });
-    const weekText = weekProjects.map(p => {
-      const indent = buildHierarchyIndent(p.level);
-      return `${indent}• ${getMentionNames(p, mentionField)} ${p.category}组 - ${p.name} - ${p.daysLeft}天`;
-    }).join('\n');
-    elements.push({
-      tag: 'markdown',
-      content: weekText,
+    weekProjects.forEach((root, index) => {
+      const isLast = index === weekProjects.length - 1;
+      const lines = renderTreeNode(root, mentionField, 'week', [], isLast);
+      elements.push({
+        tag: 'markdown',
+        content: lines.join('\n'),
+      });
     });
   }
 
-  if (overdueProjects.length === 0 && urgentProjects.length === 0 && weekProjects.length === 0) {
+  if (overdueCount === 0 && urgentCount === 0 && weekCount === 0) {
     elements.push({
       tag: 'markdown',
       content: '✅ 近期没有需要关注的DDL，继续保持！',
@@ -220,7 +242,7 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
     },
     elements,
     header: {
-      template: overdueProjects.length > 0 ? 'red' : urgentProjects.length > 0 ? 'orange' : 'green',
+      template: overdueCount > 0 ? 'red' : urgentCount > 0 ? 'orange' : 'green',
       title: {
         content: '📅 DDL每日播报',
         tag: 'plain_text',
@@ -272,24 +294,6 @@ async function sendTextToUser(openId, text) {
   return res.data;
 }
 
-async function sendCardToChat(chatId, cardContent) {
-  const res = await requestAPI(
-    'POST',
-    '/im/v1/messages?receive_id_type=chat_id',
-    {
-      receive_id: chatId,
-      msg_type: 'interactive',
-      content: JSON.stringify(cardContent),
-    }
-  );
-
-  if (res.code !== 0) {
-    throw new Error(`发送群卡片消息失败: ${res.msg} (code: ${res.code})`);
-  }
-
-  return res.data;
-}
-
 async function replyTextMessage(messageId, text) {
   const res = await requestAPI(
     'POST',
@@ -307,32 +311,12 @@ async function replyTextMessage(messageId, text) {
   return res.data;
 }
 
-async function replyCardMessage(messageId, cardContent) {
-  const res = await requestAPI(
-    'POST',
-    `/im/v1/messages/${messageId}/reply`,
-    {
-      msg_type: 'interactive',
-      content: JSON.stringify(cardContent),
-    }
-  );
-
-  if (res.code !== 0) {
-    throw new Error(`回复卡片消息失败: ${res.msg} (code: ${res.code})`);
-  }
-
-  return res.data;
-}
-
 module.exports = {
   sendMessage,
-  sendTextMessage,
   buildDDLReportCard,
   sendDDLReport,
   getRandomQuote,
   sendTextToChat,
   sendTextToUser,
-  sendCardToChat,
   replyTextMessage,
-  replyCardMessage,
 };

@@ -42,6 +42,9 @@ module.exports = {
   ddl: {
     alertDays: parseInt(process.env.DDL_ALERT_DAYS || '2', 10),
   },
+  printServer: {
+    url: process.env.PRINT_SERVER_URL || 'http://localhost:3001',
+  },
 };
 
 /**

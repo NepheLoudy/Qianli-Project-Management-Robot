@@ -25,6 +25,92 @@ function containsMeetingLink(text) {
   return MEETING_URL_REGEX.test(text);
 }
 
+function containsMeetingCard(message) {
+  if (!message || !message.content) return false;
+
+  try {
+    const content = typeof message.content === 'string'
+      ? JSON.parse(message.content)
+      : message.content;
+
+    const msgType = message.msg_type || message.message_type;
+
+    if (msgType === 'share_chat') {
+      const title = content.title || content.chat_name || '';
+      const description = content.description || '';
+      if (title.includes('会议') || title.includes('meeting') || description.includes('会议') || description.includes('meeting')) {
+        return true;
+      }
+      if (content.chat_id && content.chat_id.startsWith('oc_')) {
+        return true;
+      }
+    }
+
+    if (msgType === 'share_calendar') {
+      const title = content.title || '';
+      const description = content.description || '';
+      if (title.includes('会议') || title.includes('meeting') || title.includes('日程') || title.includes('日历')) {
+        return true;
+      }
+      if (description.includes('会议') || description.includes('meeting') || description.includes('日程') || description.includes('calendar')) {
+        return true;
+      }
+      if (content.calendar_id || content.event_id || content.agenda) {
+        return true;
+      }
+      return false;
+    }
+
+    if (msgType === 'calendar_event') {
+      return true;
+    }
+
+    if (msgType === 'interactive') {
+      const card = content.card || {};
+      const cardSchema = card.schema || '';
+      if (cardSchema.includes('meeting') || cardSchema.includes('calendar')) {
+        return true;
+      }
+      const header = card.header || {};
+      const headerTitle = header.title || {};
+      const titleText = headerTitle.content || '';
+      if (titleText.includes('会议') || titleText.includes('meeting') || titleText.includes('日程')) {
+        return true;
+      }
+      const elements = card.elements || [];
+      for (const element of elements) {
+        if (element.tag === 'div') {
+          const fields = element.fields || [];
+          for (const field of fields) {
+            const text = field.text || {};
+            const contentText = text.content || '';
+            if (contentText.includes('会议') || contentText.includes('meeting') || contentText.includes('Meeting ID') || contentText.includes('会议ID') || contentText.includes('日程') || contentText.includes('日历')) {
+              return true;
+            }
+          }
+        }
+        if (element.tag === 'action') {
+          const actions = element.actions || [];
+          for (const action of actions) {
+            if (action.tag === 'button') {
+              const text = action.text || {};
+              const buttonText = text.content || '';
+              if (buttonText.includes('加入会议') || buttonText.includes('加入') || buttonText.includes('join') || buttonText.includes('meeting') || buttonText.includes('查看日程')) {
+                return true;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return false;
+  } catch (err) {
+    console.error('[会议提醒] 解析会议卡片失败:', err.message);
+    return false;
+  }
+}
+
 function extractMeetingLinks(text) {
   if (!text) return [];
   const matches = text.match(MEETING_URL_REGEX);
@@ -62,8 +148,9 @@ async function processMeetingMessage(event) {
 
   const hasKeyword = containsMeetingKeyword(text);
   const hasLink = containsMeetingLink(text);
+  const hasMeetingCard = containsMeetingCard(message);
 
-  if (!hasKeyword && !hasLink) {
+  if (!hasKeyword && !hasLink && !hasMeetingCard) {
     return { handled: false, reason: '未检测到会议相关内容' };
   }
 
@@ -81,12 +168,13 @@ async function processMeetingMessage(event) {
 
   try {
     await bot.sendTextToChat(chatId, replyText);
-    console.log(`[会议提醒] 已在群聊 ${chatId} 中 @所有人 发送会议提醒 (关键词: ${hasKeyword}, 链接: ${links.length})`);
+    console.log(`[会议提醒] 已在群聊 ${chatId} 中 @所有人 发送会议提醒 (关键词: ${hasKeyword}, 链接: ${links.length}, 卡片: ${hasMeetingCard})`);
     return {
       handled: true,
       triggered: true,
       hasKeyword,
       hasLink,
+      hasMeetingCard,
       links,
       senderId,
     };
@@ -100,5 +188,6 @@ module.exports = {
   processMeetingMessage,
   containsMeetingKeyword,
   containsMeetingLink,
+  containsMeetingCard,
   extractMeetingLinks,
 };

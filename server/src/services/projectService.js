@@ -31,8 +31,6 @@ async function createProject(data) {
 }
 
 async function updateProject(id, data) {
-  const existing = await bitable.searchRecord(PROJECT_TABLE_ID, 'recordId', id);
-
   const fields = {};
   if (data.name !== undefined) fields.name = data.name;
   if (data.owner !== undefined) fields.owner = [{ id: data.owner }];
@@ -74,55 +72,6 @@ async function getDDLAlerts(days = 7) {
     .filter(a => a.daysLeft <= days);
 
   return alerts.sort((a, b) => a.daysLeft - b.daysLeft);
-}
-
-async function getDDLForBroadcast() {
-  const projects = await getProjects();
-  const now = dayjs();
-  const alertDays = config.ddl.alertDays;
-
-  const priorityLabels = {
-    high: '高',
-    medium: '中',
-    low: '低',
-  };
-
-  const result = {
-    overdue: [],
-    urgent: [],
-    week: [],
-  };
-
-  projects
-    .filter(p => p.status !== 'completed')
-    .forEach(p => {
-      const daysLeft = dayjs(p.ddl).diff(now, 'day');
-      const projectInfo = {
-        id: p.id,
-        name: p.name,
-        owner: p.owner,
-        ownerName: p.ownerName,
-        ddl: dayjs(p.ddl).format('YYYY-MM-DD'),
-        daysLeft,
-        priority: p.priority,
-        priorityLabel: priorityLabels[p.priority] || '中',
-        category: p.category || '其他',
-      };
-
-      if (daysLeft < 0) {
-        result.overdue.push(projectInfo);
-      } else if (daysLeft <= alertDays) {
-        result.urgent.push(projectInfo);
-      } else if (daysLeft <= 7) {
-        result.week.push(projectInfo);
-      }
-    });
-
-  result.overdue.sort((a, b) => a.daysLeft - b.daysLeft);
-  result.urgent.sort((a, b) => a.daysLeft - b.daysLeft);
-  result.week.sort((a, b) => a.daysLeft - b.daysLeft);
-
-  return result;
 }
 
 function recordToProject(record) {
@@ -244,26 +193,53 @@ async function getDDLForBroadcastWithHierarchy(filter = 'all', preloadedProjects
     return true;
   }
 
-  function collectQualifiedWithAncestors(items, ancestors = [], level = 0) {
+  function getDDLCategory(item) {
+    if (item.status === 'completed') return 'none';
+    if (!passesFilter(item)) return 'none';
+    if (item.daysLeft < 0) return 'overdue';
+    if (item.daysLeft <= alertDays) return 'urgent';
+    if (item.daysLeft <= 7) return 'week';
+    return 'none';
+  }
+
+  function pruneTree(items, level = 0) {
+    const pruned = [];
+
+    items.forEach(item => {
+      const node = {
+        ...item,
+        level,
+        ddlCategory: getDDLCategory(item),
+        isQualified: getDDLCategory(item) !== 'none',
+        children: [],
+      };
+
+      if (item.children && item.children.length > 0) {
+        node.children = pruneTree(item.children, level + 1);
+      }
+
+      if (node.isQualified || node.children.length > 0) {
+        pruned.push(node);
+      }
+    });
+
+    return pruned;
+  }
+
+  const prunedHierarchy = pruneTree(hierarchy);
+
+  function collectByCategory(items) {
     const result = { overdue: [], urgent: [], week: [] };
 
     items.forEach(item => {
-      const currentAncestors = item.status !== 'completed'
-        ? [...ancestors, { ...item, level }]
-        : ancestors;
-
-      if (item.status !== 'completed' && passesFilter(item)) {
-        if (item.daysLeft < 0) {
-          result.overdue.push(...currentAncestors);
-        } else if (item.daysLeft <= alertDays) {
-          result.urgent.push(...currentAncestors);
-        } else if (item.daysLeft <= 7) {
-          result.week.push(...currentAncestors);
-        }
+      if (item.isQualified) {
+        if (item.ddlCategory === 'overdue') result.overdue.push(item);
+        else if (item.ddlCategory === 'urgent') result.urgent.push(item);
+        else if (item.ddlCategory === 'week') result.week.push(item);
       }
 
       if (item.children && item.children.length > 0) {
-        const childResult = collectQualifiedWithAncestors(item.children, currentAncestors, level + 1);
+        const childResult = collectByCategory(item.children);
         result.overdue.push(...childResult.overdue);
         result.urgent.push(...childResult.urgent);
         result.week.push(...childResult.week);
@@ -273,27 +249,19 @@ async function getDDLForBroadcastWithHierarchy(filter = 'all', preloadedProjects
     return result;
   }
 
-  const rawResult = collectQualifiedWithAncestors(hierarchy);
-
-  function deduplicateAndSort(list) {
-    const seen = new Set();
-    return list
-      .filter(item => {
-        const key = `${item.level}-${item.id}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .sort((a, b) => {
-        if (a.level !== b.level) return a.level - b.level;
-        return a.daysLeft - b.daysLeft;
-      });
+  function hasQualifiedDescendant(node, category) {
+    if (node.ddlCategory === category) return true;
+    if (node.children && node.children.length > 0) {
+      return node.children.some(child => hasQualifiedDescendant(child, category));
+    }
+    return false;
   }
 
   return {
-    overdue: deduplicateAndSort(rawResult.overdue),
-    urgent: deduplicateAndSort(rawResult.urgent),
-    week: deduplicateAndSort(rawResult.week),
+    overdue: prunedHierarchy.filter(n => hasQualifiedDescendant(n, 'overdue')),
+    urgent: prunedHierarchy.filter(n => hasQualifiedDescendant(n, 'urgent')),
+    week: prunedHierarchy.filter(n => hasQualifiedDescendant(n, 'week')),
+    fullHierarchy: prunedHierarchy,
   };
 }
 
@@ -304,6 +272,5 @@ module.exports = {
   updateProject,
   deleteProject,
   getDDLAlerts,
-  getDDLForBroadcast,
   getDDLForBroadcastWithHierarchy,
 };

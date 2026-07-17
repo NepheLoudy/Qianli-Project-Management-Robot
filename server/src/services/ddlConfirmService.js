@@ -282,6 +282,7 @@ function getPendingStats() {
 module.exports = {
   sendOverdueConfirmation,
   handleP2PReply,
+  handleReply,
   getPendingStats,
   parseConfirmationReply,
 };

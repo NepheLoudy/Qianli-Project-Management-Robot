@@ -22,6 +22,20 @@ jobs:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_SECRET: ${{ secrets.APP_SECRET }}
+          BITABLE_APP_TOKEN: ${{ secrets.BITABLE_APP_TOKEN }}
+          BITABLE_PROJECT_TABLE_ID: ${{ secrets.BITABLE_PROJECT_TABLE_ID }}
+          BITABLE_LOG_TABLE_ID: ${{ secrets.BITABLE_LOG_TABLE_ID }}
+          BITABLE_KEYWORD_TABLE_ID: ${{ secrets.BITABLE_KEYWORD_TABLE_ID }}
+          BOT_WEBHOOK_URL: ${{ secrets.BOT_WEBHOOK_URL }}
+          BOT_NAME: ${{ secrets.BOT_NAME }}
+          CHAT_CHAT_ID: ${{ secrets.CHAT_CHAT_ID }}
+          KEYWORD_CHAT_ID: ${{ secrets.KEYWORD_CHAT_ID }}
+          BOT2_WEBHOOK_URL: ${{ secrets.BOT2_WEBHOOK_URL }}
+          BOT2_CHAT_ID: ${{ secrets.BOT2_CHAT_ID }}
+          MEETING_CHAT_IDS: ${{ secrets.MEETING_CHAT_IDS }}
+          PRINT_SERVER_URL: ${{ secrets.PRINT_SERVER_URL }}
         run: |
           ssh -o StrictHostKeyChecking=no -p $SERVER_PORT $SERVER_USER@$SERVER_HOST "
             if [ ! -d $DEPLOY_PATH ]; then
@@ -37,6 +51,31 @@ jobs:
             cd server
             npm ci --production
             
+            cat > .env << EOF
+APP_ID=${APP_ID}
+APP_SECRET=${APP_SECRET}
+BITABLE_APP_TOKEN=${BITABLE_APP_TOKEN}
+BITABLE_PROJECT_TABLE_ID=${BITABLE_PROJECT_TABLE_ID}
+BITABLE_LOG_TABLE_ID=${BITABLE_LOG_TABLE_ID}
+BITABLE_KEYWORD_TABLE_ID=${BITABLE_KEYWORD_TABLE_ID}
+FEISHU_VERIFICATION_TOKEN=
+FEISHU_ENCRYPT_KEY=
+FEISHU_USE_LONG_CONNECTION=true
+BOT_NAME=${BOT_NAME}
+BOT_WEBHOOK_URL=${BOT_WEBHOOK_URL}
+CHAT_CHAT_ID=${CHAT_CHAT_ID}
+KEYWORD_CHAT_ID=${KEYWORD_CHAT_ID}
+PORT=2174
+NODE_ENV=production
+CRON_SCHEDULE=0 0 12 * * *
+DDL_ALERT_DAYS=2
+BOT2_WEBHOOK_URL=${BOT2_WEBHOOK_URL}
+BOT2_CHAT_ID=${BOT2_CHAT_ID}
+MEETING_CHAT_IDS=${MEETING_CHAT_IDS}
+PRINT_SERVER_URL=${PRINT_SERVER_URL}
+EOF
+            
             pm2 delete knowledge-tracker 2>/dev/null || true
             pm2 start src/index.js --name knowledge-tracker
+            pm2 save
           "

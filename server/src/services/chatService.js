@@ -64,10 +64,16 @@ async function handleHelpCommand() {
   /keywords  查看当前监听关键词
   /history   查看最近播报历史
 
+3D打印指令：
+  /print-help     显示打印相关帮助
+  /print-status   查看打印机状态
+  /print-list     查看预约列表
+  /print-pending  查看待审批预约
+
 使用方式：
   • 群聊中请先 @${botName} 再发送指令
   • 示例：@${botName} /help
-  • 示例：@${botName} /status`;
+  • 示例：@${botName} /print-status`;
 }
 
 async function handleStatusCommand() {
@@ -150,7 +156,7 @@ async function handleHistoryCommand() {
   history.slice(0, 5).forEach((item, i) => {
     const time = dayjs(item.time).format('MM-DD HH:mm');
     if (item.success) {
-      lines.push(`${i + 1}. ${time} ✅ 逾期:${item.overdueCount} 紧急:${item.urgentCount} 本周:${item.weekCount}`);
+      lines.push(`${i + 1}. ${time} ✅ 逾期:${item.ownerOverdue} 紧急:${item.ownerUrgent} 本周:${item.ownerWeek}`);
     } else {
       lines.push(`${i + 1}. ${time} ❌ 失败: ${item.error}`);
     }
@@ -166,6 +172,30 @@ const commandHandlers = {
   '/keywords': handleKeywordsCommand,
   '/history': handleHistoryCommand,
 };
+
+async function handlePrintCommand(command, args) {
+  const printServerUrl = config.printServer.url;
+  
+  try {
+    const res = await fetch(`${printServerUrl}/api/chat/command`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ command, args }),
+    });
+    
+    if (!res.ok) {
+      throw new Error(`打印服务响应失败: ${res.status}`);
+    }
+    
+    const data = await res.json();
+    return data.reply || '❌ 打印服务响应异常';
+  } catch (err) {
+    console.error('[对话服务] 调用打印服务失败:', err.message);
+    return '❌ 打印服务暂不可用，请稍后再试';
+  }
+}
 
 async function handleNormalChat(senderName) {
   const botName = config.bot.name;
@@ -228,6 +258,8 @@ async function processChatMessage(event) {
         console.error('[对话服务] 指令执行失败:', err);
         replyText = `❌ 指令执行失败：${err.message}`;
       }
+    } else if (cmd.command.startsWith('/print-')) {
+      replyText = await handlePrintCommand(cmd.command, cmd.args);
     } else {
       replyText = `❌ 未知指令：${cmd.command}\n发送 /help 查看可用指令`;
     }

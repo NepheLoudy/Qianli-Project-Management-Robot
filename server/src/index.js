@@ -98,6 +98,10 @@ app.get('/api/bot/history', (req, res) => {
   res.json(getBroadcastHistory());
 });
 
+app.get('/api/bot/cron-status', (req, res) => {
+  res.json(getCronStatus());
+});
+
 app.post('/api/logs', async (req, res) => {
   try {
     const { version, content } = req.body;

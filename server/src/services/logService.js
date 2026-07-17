@@ -64,36 +64,7 @@ async function getLogs(pageSize = 20, pageToken = '') {
   };
 }
 
-async function getAllLogs() {
-  if (!LOG_TABLE_ID) {
-    return [];
-  }
-
-  let records;
-  try {
-    records = await bitable.getAllRecords(LOG_TABLE_ID, {
-      sort: [
-        {
-          field_name: 'createdAt',
-          desc: true,
-        },
-      ],
-    });
-  } catch (sortErr) {
-    console.warn('[维护日志] 排序失败，降级为不排序:', sortErr.message);
-    records = await bitable.getAllRecords(LOG_TABLE_ID);
-  }
-
-  return records.map(record => ({
-    id: record.record_id,
-    version: record.fields.version || '',
-    content: record.fields.content || '',
-    createdAt: record.fields.createdAt || record.fields['创建时间'] || null,
-  }));
-}
-
 module.exports = {
   createLog,
   getLogs,
-  getAllLogs,
 };
