@@ -6,6 +6,8 @@ const config = require('../config');
 
 const broadcastHistory = [];
 
+let lastBroadcastDate = null;
+
 const RETRY_CONFIG = {
   maxAttempts: 3,
   initialDelay: 30 * 1000,
@@ -32,6 +34,12 @@ function countQualified(nodes) {
 }
 
 async function runDDLBroadcast() {
+  const today = new Date().toLocaleDateString('zh-CN');
+  if (lastBroadcastDate === today) {
+    console.log('[DDL播报] 今日已播报过，跳过重复触发');
+    return null;
+  }
+
   console.log('[DDL播报] 开始执行每日DDL播报...');
 
   let attempt = 0;
@@ -83,6 +91,8 @@ async function runDDLBroadcast() {
         success: true,
         attempts: attempt,
       });
+
+      lastBroadcastDate = new Date().toLocaleDateString('zh-CN');
 
       if (broadcastHistory.length > 50) {
         broadcastHistory.length = 50;

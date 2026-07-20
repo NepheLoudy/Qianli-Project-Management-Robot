@@ -92,7 +92,7 @@ conn.on('ready', () => {
 conn.on('error', e => console.error(`SSH连接失败: ${e.message}`));
 conn.connect({ 
   host: '10.253.33.233', 
-  port: 8500, 
+  port: 8500,
   username: 'qianli', 
   password: 'cquqianli2026' 
 });

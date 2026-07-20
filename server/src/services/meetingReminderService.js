@@ -4,6 +4,9 @@ const keywordService = require('./keywordService');
 
 const processedMessageIds = new Set();
 
+const lastTriggerTime = new Map();
+const TRIGGER_INTERVAL_MS = 5 * 60 * 1000;
+
 const MEETING_KEYWORDS = [
   '会议',
   '开会',
@@ -153,6 +156,14 @@ async function processMeetingMessage(event) {
   if (!hasKeyword && !hasLink && !hasMeetingCard) {
     return { handled: false, reason: '未检测到会议相关内容' };
   }
+
+  const now = Date.now();
+  const lastTime = lastTriggerTime.get(chatId);
+  if (lastTime && now - lastTime < TRIGGER_INTERVAL_MS) {
+    return { handled: true, skipped: true, reason: '时间窗口内重复触发' };
+  }
+
+  lastTriggerTime.set(chatId, now);
 
   const links = extractMeetingLinks(text);
   const senderId = event.sender?.sender_id?.open_id || event.sender?.sender_id?.user_id || '';
