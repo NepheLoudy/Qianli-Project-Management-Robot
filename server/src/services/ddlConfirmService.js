@@ -13,7 +13,7 @@ const processedMessageIds = new Set();
 const PENDING_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 function buildAtTag(openId, name) {
-  return `<at id="${openId}">${name || '用户'}</at>`;
+  return `<at user_id="${openId}">${name || '用户'}</at>`;
 }
 
 /**
@@ -182,19 +182,18 @@ async function handleReply(event) {
   const reply = parseConfirmationReply(text);
 
   if (!reply) {
-    const pending = pendingList[0];
-    let tipText = `未识别你的回复。请回复 "是" 或 "否" 来确认项目 "${pending.projectName}" 是否已完成。\n• "是" → 标记为已完成\n• "否" → 保持当前状态`;
-
-    try {
-      if (chatType === 'p2p') {
+    // 群聊中保守策略：不回复未识别的消息，避免反复触发
+    if (chatType === 'p2p') {
+      const pending = pendingList[0];
+      let tipText = `未识别你的回复。请回复 "是" 或 "否" 来确认项目 "${pending.projectName}" 是否已完成。\n• "是" → 标记为已完成\n• "否" → 保持当前状态`;
+      try {
         await bot.sendTextToUser(senderId, tipText);
-      } else {
-        await bot.sendTextToChat(config.chat.chatId, `${buildAtTag(senderId, pending.ownerName)} ${tipText}`);
+      } catch (err) {
+        console.error('[DDL确认] 发送引导提示失败:', err.message);
       }
-    } catch (err) {
-      console.error('[DDL确认] 发送引导提示失败:', err.message);
     }
-    return { handled: true, reason: '未识别回复' };
+    // 群聊中静默忽略，不算作 handled，让后续服务（关键词/会议提醒）继续处理
+    return { handled: false, reason: '群聊未识别回复，静默忽略' };
   }
 
   const pending = pendingList.shift();
