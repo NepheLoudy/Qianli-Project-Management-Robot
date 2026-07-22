@@ -40,6 +40,8 @@ async function runDDLBroadcast() {
     return null;
   }
 
+  lastBroadcastDate = today;
+
   console.log('[DDL播报] 开始执行每日DDL播报...');
 
   let attempt = 0;
@@ -91,8 +93,6 @@ async function runDDLBroadcast() {
         success: true,
         attempts: attempt,
       });
-
-      lastBroadcastDate = new Date().toLocaleDateString('zh-CN');
 
       if (broadcastHistory.length > 50) {
         broadcastHistory.length = 50;
