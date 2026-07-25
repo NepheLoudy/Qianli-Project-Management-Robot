@@ -216,12 +216,6 @@ async function findOrCreateKeywordParent(groupName) {
 }
 
 async function processMessageEvent(event) {
-  const keywordsConfig = loadKeywordsConfig();
-
-  if (!keywordsConfig.enabled || keywordsConfig.keywords.length === 0) {
-    return { skipped: true, reason: '关键词监听未启用' };
-  }
-
   const message = event.message;
   if (!message) {
     return { skipped: true, reason: '无消息内容' };
@@ -239,11 +233,6 @@ async function processMessageEvent(event) {
 
   const text = extractTextContent(message);
   console.log('[关键词监听] 消息文本:', text);
-  const matchedKeywords = extractKeywords(text, keywordsConfig.keywords);
-
-  if (matchedKeywords.length === 0) {
-    return { skipped: true, reason: '未匹配关键词' };
-  }
 
   const chatId = message.chat_id;
   const messageId = message.message_id;
@@ -254,57 +243,55 @@ async function processMessageEvent(event) {
 
   const imageKeys = extractImageKeys(message);
 
-  const results = [];
-  for (const keyword of matchedKeywords) {
-    const groupName = keyword.replace(/^#/, '');
-    const contentAfter = extractContentAfterKeyword(text, keyword);
+  const childFields = {
+    组别: '全部发言',
+    消息内容: text || '(无文本内容)',
+  };
 
-    const childFields = {
-      组别: groupName,
-      消息内容: contentAfter,
-    };
+  try {
+    const parentRecordId = await findOrCreateKeywordParent('全部发言');
+    childFields['parentId'] = [parentRecordId];
 
-    try {
-      const parentRecordId = await findOrCreateKeywordParent(groupName);
-      childFields['parentId'] = [parentRecordId];
+    if (sendTime) {
+      childFields['时间'] = sendTime;
+    }
 
-      if (sendTime) {
-        childFields['时间'] = sendTime;
-      }
+    if (senderId) {
+      childFields['发送人'] = [{ id: senderId }];
+    }
 
-      if (senderId) {
-        childFields['发送人'] = [{ id: senderId }];
-      }
+    if (imageKeys.length > 0) {
+      childFields['图片'] = imageKeys.map(key => ({ file_token: key }));
+    }
 
-      if (imageKeys.length > 0) {
-        childFields['图片'] = imageKeys.map(key => ({ file_token: key }));
-      }
+    const childRecord = await bitableApi.createRecord(TABLE_ID(), childFields);
+    console.log(`[关键词监听] 已记录发言 - 用户:${senderId} (父记录: ${parentRecordId})`);
 
-      const childRecord = await bitableApi.createRecord(TABLE_ID(), childFields);
-      results.push({
-        keyword,
+    return {
+      matched: true,
+      keywords: ['全部发言'],
+      sender: senderId,
+      results: [{
+        keyword: '全部发言',
         success: true,
         parentRecordId,
         childRecordId: childRecord.record_id,
-      });
-      console.log(`[关键词监听] 已记录 ${keyword} - 用户:${senderId} (父记录: ${parentRecordId})`);
-    } catch (err) {
-      console.error(`[关键词监听] 写入多维表格失败 (${keyword}):`, err.message);
-      console.error(`[关键词监听] 写入的字段:`, Object.keys(childFields));
-      results.push({
-        keyword,
+      }],
+    };
+  } catch (err) {
+    console.error('[关键词监听] 写入多维表格失败:', err.message);
+    console.error('[关键词监听] 写入的字段:', Object.keys(childFields));
+    return {
+      matched: true,
+      keywords: ['全部发言'],
+      sender: senderId,
+      results: [{
+        keyword: '全部发言',
         success: false,
         error: err.message,
-      });
-    }
+      }],
+    };
   }
-
-  return {
-    matched: true,
-    keywords: matchedKeywords,
-    sender: senderId,
-    results,
-  };
 }
 
 async function getKeywordRecords(params = {}) {
