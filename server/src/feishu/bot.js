@@ -122,7 +122,7 @@ function renderTreeNode(node, mentionField, categoryInfo, ancestors = [], isLast
   const prefix = buildTreePrefix(level, isLast, ancestors);
 
   let line = '';
-  if (hasChildren && !isQualified) {
+  if (hasChildren) {
     line = `${prefix}**📁 ${category}组 - ${name}**`;
   } else if (isQualified) {
     const mentionTags = buildMentionTags(node, mentionField);
