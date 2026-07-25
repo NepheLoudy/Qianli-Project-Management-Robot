@@ -202,6 +202,14 @@ async function getDDLForBroadcastWithHierarchy(filter = 'all', preloadedProjects
     return 'none';
   }
 
+  function hasUncompletedChild(item) {
+    if (!item.children || item.children.length === 0) return false;
+    return item.children.some(child => {
+      if (child.status !== 'completed') return true;
+      return hasUncompletedChild(child);
+    });
+  }
+
   function pruneTree(items, level = 0) {
     const pruned = [];
 
@@ -211,11 +219,16 @@ async function getDDLForBroadcastWithHierarchy(filter = 'all', preloadedProjects
         level,
         ddlCategory: getDDLCategory(item),
         isQualified: getDDLCategory(item) !== 'none',
+        hasChildren: item.children && item.children.length > 0,
         children: [],
       };
 
       if (item.children && item.children.length > 0) {
         node.children = pruneTree(item.children, level + 1);
+      }
+
+      if (node.hasChildren && node.children.length === 0) {
+        return;
       }
 
       if (node.isQualified || node.children.length > 0) {

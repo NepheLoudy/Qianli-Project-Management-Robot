@@ -117,12 +117,14 @@ function buildTreePrefix(level, isLast, ancestors) {
 }
 
 function renderTreeNode(node, mentionField, categoryInfo, ancestors = [], isLast = true) {
-  const { level, name, category, isQualified, daysLeft, ddlCategory, priorityLabel, ddlFormatted, children } = node;
+  const { level, name, category, isQualified, daysLeft, ddlCategory, priorityLabel, ddlFormatted, children, hasChildren } = node;
 
   const prefix = buildTreePrefix(level, isLast, ancestors);
 
   let line = '';
-  if (isQualified) {
+  if (hasChildren && !isQualified) {
+    line = `${prefix}**📁 ${category}组 - ${name}**`;
+  } else if (isQualified) {
     const mentionTags = buildMentionTags(node, mentionField);
     let statusText = '';
     if (ddlCategory === 'overdue') {
@@ -132,7 +134,8 @@ function renderTreeNode(node, mentionField, categoryInfo, ancestors = [], isLast
     } else if (ddlCategory === 'week') {
       statusText = `${daysLeft}天后到期`;
     }
-    line = `${prefix}${mentionTags} **${category}组 - ${name}** - ${statusText}\n${'   '.repeat(level)} 优先级: ${priorityLabel}，截止: ${ddlFormatted}`;
+    const checkbox = daysLeft < 0 ? '🔴' : daysLeft <= 2 ? '🟠' : '🟢';
+    line = `${prefix}${checkbox} ${mentionTags} **${category}组 - ${name}** - ${statusText}\n${'   '.repeat(level)}  优先级: ${priorityLabel}，截止: ${ddlFormatted}`;
   } else {
     line = `${prefix}**${category}组 - ${name}**`;
   }
