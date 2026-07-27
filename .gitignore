@@ -11,3 +11,4 @@ build/
 .idea/
 *.swp
 *.swo
+.broadcast-state.json

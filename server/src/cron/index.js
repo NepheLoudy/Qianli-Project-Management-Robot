@@ -1,4 +1,6 @@
 const cron = require('node-cron');
+const fs = require('fs');
+const path = require('path');
 const projectService = require('../services/projectService');
 const { sendDDLReport, getRandomQuote } = require('../feishu/bot');
 const ddlConfirmService = require('../services/ddlConfirmService');
@@ -6,7 +8,29 @@ const config = require('../config');
 
 const broadcastHistory = [];
 
-let lastBroadcastDate = null;
+const STATE_FILE = path.join(__dirname, '..', '..', '.broadcast-state.json');
+
+function loadBroadcastState() {
+  try {
+    if (fs.existsSync(STATE_FILE)) {
+      const data = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
+      return data.lastBroadcastDate || null;
+    }
+  } catch (err) {
+    console.warn('[DDL播报] 读取状态文件失败:', err.message);
+  }
+  return null;
+}
+
+function saveBroadcastState(date) {
+  try {
+    fs.writeFileSync(STATE_FILE, JSON.stringify({ lastBroadcastDate: date }));
+  } catch (err) {
+    console.warn('[DDL播报] 写入状态文件失败:', err.message);
+  }
+}
+
+let lastBroadcastDate = loadBroadcastState();
 
 const RETRY_CONFIG = {
   maxAttempts: 3,
@@ -41,6 +65,7 @@ async function runDDLBroadcast() {
   }
 
   lastBroadcastDate = today;
+  saveBroadcastState(today);
 
   console.log('[DDL播报] 开始执行每日DDL播报...');
 
