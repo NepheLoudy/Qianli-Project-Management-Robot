@@ -87,23 +87,34 @@ async function sendMessage(cardContent, webhookUrl) {
 
 function buildAtTag(userId, name) {
   if (!userId) return '';
-  return `<at id="${userId}">${name || ''}</at>`;
+  return `<at user_id="${userId}">${name || ''}</at>`;
+}
+
+// 获取项目在指定人员字段下的成员列表（mentionField 即多维表格字段名，对应各播报群）
+function getFieldMembers(project, mentionField) {
+  if (mentionField === 'owner') {
+    return project.owner ? [{ id: project.owner, name: project.ownerName }] : [];
+  }
+  const fieldMap = {
+    contributers: project.contributers,
+    dkyjcontributers: project.dkyjContributers,
+    sjcontributers: project.sjContributers,
+    xycontributers: project.xyContributers,
+  };
+  return fieldMap[mentionField] || [];
 }
 
 function buildMentionTags(project, mentionField) {
-  if (mentionField === 'contributers') {
-    if (!project.contributers || project.contributers.length === 0) return '';
-    return project.contributers.map(c => buildAtTag(c.id, c.name)).join(' ');
-  }
-  return buildAtTag(project.owner, project.ownerName);
+  return getFieldMembers(project, mentionField)
+    .map(m => buildAtTag(m.id, m.name))
+    .filter(tag => tag)
+    .join(' ');
 }
 
 function getMentionNames(project, mentionField) {
-  if (mentionField === 'contributers') {
-    if (!project.contributers || project.contributers.length === 0) return '未指派';
-    return project.contributers.map(c => c.name).join(', ');
-  }
-  return project.ownerName || '未指派';
+  const members = getFieldMembers(project, mentionField);
+  if (members.length === 0) return '未指派';
+  return members.map(m => m.name).join(', ');
 }
 
 function buildTreePrefix(level, isLast, ancestors) {
@@ -260,7 +271,62 @@ async function sendDDLReport(overdueProjects, urgentProjects, weekProjects, quot
   return sendMessage(card, webhookUrl);
 }
 
+// 解析文本中的 @ 标签，转换为富文本元素数组
+function parseTextWithAtTags(text) {
+  const elements = [];
+  const atRegex = /<at\s+user_id="([^"]+)"[^>]*>([^<]*)<\/at>/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = atRegex.exec(text)) !== null) {
+    // 添加 @ 标签前的文本
+    if (match.index > lastIndex) {
+      elements.push({ tag: 'text', text: text.slice(lastIndex, match.index) });
+    }
+    // 添加 @ 元素
+    elements.push({ tag: 'at', user_id: match[1] });
+    lastIndex = match.index + match[0].length;
+  }
+
+  // 添加剩余文本
+  if (lastIndex < text.length) {
+    elements.push({ tag: 'text', text: text.slice(lastIndex) });
+  }
+
+  return elements;
+}
+
+// 发送群聊文本消息（支持 @ 提及）
 async function sendTextToChat(chatId, text) {
+  // 检查是否包含 @ 标签，如果有则使用富文本消息
+  const hasAtTag = /<at\s+[^>]*>/.test(text);
+
+  if (hasAtTag) {
+    const elements = parseTextWithAtTags(text);
+    // 使用富文本消息以支持 @ 解析
+    const res = await requestAPI(
+      'POST',
+      '/im/v1/messages?receive_id_type=chat_id',
+      {
+        receive_id: chatId,
+        msg_type: 'post',
+        content: JSON.stringify({
+          zh_cn: {
+            title: '',
+            content: [elements],
+          },
+        }),
+      }
+    );
+
+    if (res.code !== 0) {
+      throw new Error(`发送群消息失败: ${res.msg} (code: ${res.code})`);
+    }
+
+    return res.data;
+  }
+
+  // 无 @ 标签，使用普通文本消息
   const res = await requestAPI(
     'POST',
     '/im/v1/messages?receive_id_type=chat_id',

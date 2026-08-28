@@ -3,7 +3,7 @@ const projectService = require('./projectService');
 const keywordService = require('./keywordService');
 const config = require('../config');
 
-// key: owner open_id, value: 数组 [{ projectId, projectName, ownerName, sentAt }]
+// key: owner open_id, value: 数组 [{ projectId, projectName, ownerName, sentAt, chatId }]
 const pendingConfirmations = new Map();
 
 // 消息去重 Set
@@ -62,7 +62,8 @@ async function sendOverdueConfirmation(project) {
     `• 回复 "否" → 状态保持不变，继续提醒`,
   ].join('\n');
 
-  const chatId = config.chat.chatId;
+  const ownerGroup = config.getOwnerGroup();
+  const chatId = ownerGroup?.chatId || '';
 
   try {
     await bot.sendTextToUser(ownerOpenId, p2pText);
@@ -75,6 +76,7 @@ async function sendOverdueConfirmation(project) {
       ownerOpenId,
       sentAt: Date.now(),
       sentMode: 'p2p',
+      chatId: null, // 私聊不限制来源
     });
     pendingConfirmations.set(ownerOpenId, existing);
     return { sent: true, mode: 'p2p' };
@@ -97,6 +99,7 @@ async function sendOverdueConfirmation(project) {
           ownerOpenId,
           sentAt: Date.now(),
           sentMode: 'group',
+          chatId, // 记录发送问询的群聊 ID，回复时需匹配
         });
         pendingConfirmations.set(ownerOpenId, existing);
         return { sent: true, mode: 'group' };
@@ -147,6 +150,7 @@ async function handleReply(event) {
   if (!message) return { handled: false, reason: '无消息内容' };
 
   const chatType = message.chat_type || message.chatMode;
+  const replyChatId = message.chat_id || ''; // 回复来源的群聊 ID
 
   // 消息去重
   if (message.message_id) {
@@ -171,8 +175,26 @@ async function handleReply(event) {
     return { handled: false, reason: '该用户无待确认项目' };
   }
 
+  // 找到匹配的待确认项目（群聊需匹配 chatId，私聊不限制）
+  const pendingIndex = pendingList.findIndex(p => {
+    if (p.sentMode === 'p2p') return true; // 私聊发送的，任何来源都可以回复
+    if (p.sentMode === 'group') {
+      // 群聊发送的，必须来自同一个群
+      return p.chatId && p.chatId === replyChatId;
+    }
+    return false;
+  });
+
+  if (pendingIndex === -1) {
+    // 没有匹配的待确认项目（可能是群聊串行）
+    if (chatType === 'group' && replyChatId) {
+      console.log(`[DDL确认] 群聊 ${replyChatId} 的回复不匹配任何待确认项目，跳过`);
+    }
+    return { handled: false, reason: '回复来源与待确认项目不匹配' };
+  }
+
   const text = keywordService.extractTextContent(message);
-  console.log(`[DDL确认] 收到 ${senderId} 的回复 (${chatType}):`, text);
+  console.log(`[DDL确认] 收到 ${senderId} 的回复 (${chatType}, chatId: ${replyChatId}):`, text);
 
   if (text && text.trim().startsWith('/')) {
     console.log('[DDL确认] 检测到指令消息，跳过确认流程');
@@ -184,7 +206,7 @@ async function handleReply(event) {
   if (!reply) {
     // 群聊中保守策略：不回复未识别的消息，避免反复触发
     if (chatType === 'p2p') {
-      const pending = pendingList[0];
+      const pending = pendingList[pendingIndex];
       let tipText = `未识别你的回复。请回复 "是" 或 "否" 来确认项目 "${pending.projectName}" 是否已完成。\n• "是" → 标记为已完成\n• "否" → 保持当前状态`;
       try {
         await bot.sendTextToUser(senderId, tipText);
@@ -196,10 +218,13 @@ async function handleReply(event) {
     return { handled: false, reason: '群聊未识别回复，静默忽略' };
   }
 
-  const pending = pendingList.shift();
+  const pending = pendingList.splice(pendingIndex, 1)[0];
   if (pendingList.length === 0) {
     pendingConfirmations.delete(senderId);
   }
+
+  // 确定回复目标：使用发送问询时的 chatId（群聊）或私聊
+  const targetChatId = pending.sentMode === 'group' ? pending.chatId : null;
 
   if (reply === 'yes') {
     try {
@@ -207,31 +232,31 @@ async function handleReply(event) {
       console.log(`[DDL确认] 已将项目 "${pending.projectName}" 状态更新为 completed`);
 
       let successText = `✅ 已将项目 "${pending.projectName}" 的状态更新为 completed。\n如需修改，请在看板中手动调整。`;
-      if (chatType === 'p2p') {
+      if (chatType === 'p2p' || !targetChatId) {
         await bot.sendTextToUser(senderId, successText);
       } else {
-        await bot.sendTextToChat(config.chat.chatId, `${buildAtTag(senderId, pending.ownerName)} ${successText}`);
+        await bot.sendTextToChat(targetChatId, `${buildAtTag(senderId, pending.ownerName)} ${successText}`);
       }
     } catch (err) {
       console.error(`[DDL确认] 更新项目状态失败 (${pending.projectName}):`, err.message);
       let failText = `❌ 更新项目 "${pending.projectName}" 状态失败：${err.message}\n请手动在看板中更新。`;
-      if (chatType === 'p2p') {
+      if (chatType === 'p2p' || !targetChatId) {
         await bot.sendTextToUser(senderId, failText);
       } else {
-        await bot.sendTextToChat(config.chat.chatId, `${buildAtTag(senderId, pending.ownerName)} ${failText}`);
+        await bot.sendTextToChat(targetChatId, `${buildAtTag(senderId, pending.ownerName)} ${failText}`);
       }
       const list = pendingConfirmations.get(senderId) || [];
-      list.unshift(pending);
+      list.push(pending);
       pendingConfirmations.set(senderId, list);
     }
   } else {
     console.log(`[DDL确认] 用户 ${senderId} 选择保持项目 "${pending.projectName}" 当前状态`);
     let keepText = `📋 已记录你的回复，项目 "${pending.projectName}" 状态保持不变。请尽快在看板中更新进度。`;
-    if (chatType === 'p2p') {
+    if (chatType === 'p2p' || !targetChatId) {
       await bot.sendTextToUser(senderId, keepText);
     } else {
-        await bot.sendTextToChat(config.chat.chatId, `${buildAtTag(senderId, pending.ownerName)} ${keepText}`);
-      }
+      await bot.sendTextToChat(targetChatId, `${buildAtTag(senderId, pending.ownerName)} ${keepText}`);
+    }
   }
 
   return { handled: true, reply };

@@ -58,7 +58,7 @@ function startEventSubscription() {
             console.log('[事件订阅] 对话服务已处理:', chatResult.isCommand ? '指令=' + chatResult.command : '正常对话', `(${chatCtx.label})`);
             return;
           }
-        } else if (!config.chat.chatId && !config.bot2.chatId) {
+        } else if (!config.broadcastGroups.some(g => g.chatId)) {
           // 都没配置的话，所有群都响应（兼容旧行为）
           const chatResult = await chatService.processChatMessage(data);
           if (chatResult.handled) {

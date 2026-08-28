@@ -93,6 +93,13 @@ async function handleStatusCommand() {
     `⏰ 定时任务：`,
     `   DDL播报：${config.cron.schedule} (Asia/Shanghai)`,
     `   DDL预警天数：${config.ddl.alertDays} 天`,
+    ``,
+    `📢 播报群（${config.broadcastGroups.length} 个）：`,
+    ...config.broadcastGroups.map(g => {
+      const webhookStatus = g.webhookUrl ? '✅ webhook已配置' : '❌ webhook未配置';
+      const chatStatus = g.chatId ? '✅ 群ID已配置' : '⚠️ 群ID未配置';
+      return `   ${g.label}：${webhookStatus}，${chatStatus}`;
+    }),
   ];
   
   return lines.join('\n');
@@ -105,11 +112,10 @@ async function handleTestDDLCommand(chatCtx) {
 
     const allProjects = await projectService.getProjects();
     const quote = await getRandomQuote();
-    const filter = chatCtx?.filter || 'all';
     const mentionField = chatCtx?.mentionField || 'owner';
     const webhookUrl = chatCtx?.webhookUrl;
 
-    const { overdue, urgent, week } = await projectService.getDDLForBroadcastWithHierarchy(filter, allProjects);
+    const { overdue, urgent, week } = await projectService.getDDLForBroadcastWithHierarchy(mentionField, allProjects);
 
     await sendDDLReport(overdue, urgent, week, quote, { webhookUrl, mentionField });
 
@@ -156,7 +162,8 @@ async function handleHistoryCommand() {
   history.slice(0, 5).forEach((item, i) => {
     const time = dayjs(item.time).format('MM-DD HH:mm');
     if (item.success) {
-      lines.push(`${i + 1}. ${time} ✅ 逾期:${item.ownerOverdue} 紧急:${item.ownerUrgent} 本周:${item.ownerWeek}`);
+      const parts = (item.groups || []).map(g => `${g.label} 逾期:${g.overdue} 紧急:${g.urgent} 本周:${g.week}`);
+      lines.push(`${i + 1}. ${time} ✅ ${parts.join(' | ')}`);
     } else {
       lines.push(`${i + 1}. ${time} ❌ 失败: ${item.error}`);
     }

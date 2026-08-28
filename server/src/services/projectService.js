@@ -74,6 +74,14 @@ async function getDDLAlerts(days = 7) {
   return alerts.sort((a, b) => a.daysLeft - b.daysLeft);
 }
 
+// 解析人员字段（多选人员），对应各播报群
+function parsePersonField(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map(c => ({ id: c.id || '', name: c.name || c.en_name || '' }))
+    .filter(c => c.id);
+}
+
 function recordToProject(record) {
   const f = record.fields;
 
@@ -114,13 +122,11 @@ function recordToProject(record) {
     }
   }
 
-  // 解析 contributers（多选人员字段）
-  let contributers = [];
-  if (f.contributers && Array.isArray(f.contributers)) {
-    contributers = f.contributers
-      .map(c => ({ id: c.id || '', name: c.name || c.en_name || '' }))
-      .filter(c => c.id);
-  }
+  // 解析4个人员字段，对应4个播报群
+  const contributers = parsePersonField(f.contributers);
+  const dkyjContributers = parsePersonField(f.dkyjcontributers);
+  const sjContributers = parsePersonField(f.sjcontributers);
+  const xyContributers = parsePersonField(f.xycontributers);
 
   return {
     id: record.record_id,
@@ -128,6 +134,9 @@ function recordToProject(record) {
     owner: ownerId,
     ownerName: ownerName,
     contributers,
+    dkyjContributers,
+    sjContributers,
+    xyContributers,
     ddl: f.ddl,
     priority: f.priority || 'medium',
     status: f.status || 'pending',
@@ -187,14 +196,24 @@ async function getDDLForBroadcastWithHierarchy(filter = 'all', preloadedProjects
 
   const hierarchy = buildHierarchy(allProjects);
 
+  // 各播报群对应的人员字段判断（mentionField 即多维表格字段名）
+  const mentionFieldChecks = {
+    owner: item => !!item.owner,
+    contributers: item => item.contributers.length > 0,
+    dkyjcontributers: item => item.dkyjContributers.length > 0,
+    sjcontributers: item => item.sjContributers.length > 0,
+    xycontributers: item => item.xyContributers.length > 0,
+  };
+
   function passesFilter(item) {
-    if (filter === 'owner') return !!item.owner;
-    if (filter === 'contributers') return item.contributers && item.contributers.length > 0;
+    const check = mentionFieldChecks[filter];
+    if (check) return check(item);
     return true;
   }
 
   function getDDLCategory(item) {
-    if (item.status === 'completed') return 'none';
+    // 只播报 in_progress 和 waiting 状态的项目
+    if (item.status !== 'in_progress' && item.status !== 'waiting') return 'none';
     if (!passesFilter(item)) return 'none';
     if (item.daysLeft < 0) return 'overdue';
     if (item.daysLeft <= alertDays) return 'urgent';
@@ -205,7 +224,7 @@ async function getDDLForBroadcastWithHierarchy(filter = 'all', preloadedProjects
   function hasUncompletedChild(item) {
     if (!item.children || item.children.length === 0) return false;
     return item.children.some(child => {
-      if (child.status !== 'completed') return true;
+      if (child.status === 'in_progress' || child.status === 'waiting') return true;
       return hasUncompletedChild(child);
     });
   }

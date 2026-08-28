@@ -83,38 +83,53 @@ async function runDDLBroadcast() {
         console.log(`[DDL播报] 今日语录: "${quote.words}" by ${quote.person || '佚名'}`);
       }
 
-      // 机器人1: 只播报 owner 有人的项目
-      const ownerData = await projectService.getDDLForBroadcastWithHierarchy('owner', allProjects);
-      const result1 = await sendDDLReport(ownerData.overdue, ownerData.urgent, ownerData.week, quote, {
-        webhookUrl: config.bot.webhookUrl,
-        mentionField: 'owner',
-      });
-      const ownerOverdueCount = countQualified(ownerData.overdue);
-      const ownerUrgentCount = countQualified(ownerData.urgent);
-      const ownerWeekCount = countQualified(ownerData.week);
-      console.log(`[DDL播报] 机器人1(owner) - 逾期:${ownerOverdueCount} 紧急:${ownerUrgentCount} 本周:${ownerWeekCount}`);
+      // 逐群播报：每个群只播报对应人员字段有人的项目
+      // 同一 webhook / 同一群聊ID 只发送一次，避免同一群被重复播报
+      const broadcastTargets = config.broadcastGroups.filter(g => g.webhookUrl);
+      const seenWebhooks = new Set();
+      const seenChatIds = new Set();
+      const groupStats = [];
+      let result1 = null;
+      let ownerData = null;
 
-      // 机器人2: 只播报 contributers 有人的项目
-      if (config.bot2 && config.bot2.webhookUrl) {
-        const contribData = await projectService.getDDLForBroadcastWithHierarchy('contributers', allProjects);
-        const result2 = await sendDDLReport(contribData.overdue, contribData.urgent, contribData.week, quote, {
-          webhookUrl: config.bot2.webhookUrl,
-          mentionField: 'contributers',
+      for (const group of broadcastTargets) {
+        if (seenWebhooks.has(group.webhookUrl)) {
+          console.warn(`[DDL播报] ${group.label} 的 webhook 与其他群重复，跳过以避免重复播报`);
+          continue;
+        }
+        if (group.chatId && seenChatIds.has(group.chatId)) {
+          console.warn(`[DDL播报] ${group.label} 的群聊ID与其他群重复，跳过以避免同一群收到多张播报卡`);
+          continue;
+        }
+        seenWebhooks.add(group.webhookUrl);
+        if (group.chatId) seenChatIds.add(group.chatId);
+
+        const groupData = await projectService.getDDLForBroadcastWithHierarchy(group.mentionField, allProjects);
+        const sendResult = await sendDDLReport(groupData.overdue, groupData.urgent, groupData.week, quote, {
+          webhookUrl: group.webhookUrl,
+          mentionField: group.mentionField,
         });
-        const contribOverdueCount = countQualified(contribData.overdue);
-        const contribUrgentCount = countQualified(contribData.urgent);
-        const contribWeekCount = countQualified(contribData.week);
-        console.log(`[DDL播报] 机器人2(contributers) - 逾期:${contribOverdueCount} 紧急:${contribUrgentCount} 本周:${contribWeekCount}`);
-      } else {
-        console.log('[DDL播报] 机器人2 未配置 webhookUrl，跳过 contributers 播报');
+
+        if (group.mentionField === 'owner') {
+          result1 = sendResult;
+          ownerData = groupData;
+        }
+
+        const overdueCount = countQualified(groupData.overdue);
+        const urgentCount = countQualified(groupData.urgent);
+        const weekCount = countQualified(groupData.week);
+        groupStats.push({ label: group.label, overdue: overdueCount, urgent: urgentCount, week: weekCount });
+        console.log(`[DDL播报] ${group.label} - 逾期:${overdueCount} 紧急:${urgentCount} 本周:${weekCount}`);
+      }
+
+      if (broadcastTargets.length === 0) {
+        console.warn('[DDL播报] 未配置任何播报群 webhook，跳过群播报');
       }
 
       broadcastHistory.unshift({
         time: new Date().toISOString(),
         type: 'ddl_broadcast',
-        ownerOverdue: ownerOverdueCount,
-        ownerUrgent: ownerUrgentCount,
-        ownerWeek: ownerWeekCount,
+        groups: groupStats,
         success: true,
         attempts: attempt,
       });
@@ -123,9 +138,12 @@ async function runDDLBroadcast() {
         broadcastHistory.length = 50;
       }
 
-      console.log(`[DDL播报] 播报完成 (尝试: ${attempt})`);
+      console.log(`[DDL播报] 播报完成，共 ${groupStats.length} 个群 (尝试: ${attempt})`);
 
-      // 逾期确认：基于 owner 过滤的数据，递归收集所有逾期项目
+      // 逾期确认：基于 owner 字段过滤的数据，递归收集所有逾期项目
+      if (!ownerData) {
+        ownerData = await projectService.getDDLForBroadcastWithHierarchy('owner', allProjects);
+      }
       const overdueConfirmTargets = [];
       function collectOverdue(nodes) {
         nodes.forEach(node => {
@@ -151,7 +169,7 @@ async function runDDLBroadcast() {
         console.log('[DDL播报] 逾期确认发送结果:', JSON.stringify(confirmResults));
       }
 
-      return result1;
+      return result1 || { groups: groupStats };
     } catch (err) {
       lastError = err;
       if (isFrequencyLimitError(err)) {
