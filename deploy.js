@@ -2,7 +2,7 @@ const { Client } = require('ssh2');
 
 const config = {
   host: '10.253.33.233',
-  port: 22,
+  port: 8500,
   username: 'qianli',
   password: 'cquqianli2026'
 };
