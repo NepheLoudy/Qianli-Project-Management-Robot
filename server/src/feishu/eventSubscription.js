@@ -79,11 +79,20 @@ function startEventSubscription() {
           console.log('[事件订阅] 关键词监听跳过：非目标群 (chat_id:', chatId, ')');
         }
 
-        // 会议提醒：检测会议关键词或飞书会议链接
+        // 会议提醒：仅检测会议卡片
         if (chatType === 'group') {
+          // 调试日志：打印消息类型和内容结构
+          const msgType = message.msg_type || message.message_type;
+          console.log(`[事件订阅] 群聊消息类型: ${msgType}`);
+          if (msgType !== 'text') {
+            console.log(`[事件订阅] 非文本消息内容:`, JSON.stringify(message.content).substring(0, 500));
+          }
+
           const meetingResult = await meetingReminderService.processMeetingMessage(data);
           if (meetingResult.handled && meetingResult.triggered) {
-            console.log('[事件订阅] 会议提醒已触发:', meetingResult.hasKeyword ? '关键词' : '', meetingResult.hasLink ? '链接' : '');
+            console.log('[事件订阅] 会议提醒已触发 (会议卡片)');
+          } else if (meetingResult.handled && !meetingResult.triggered) {
+            console.log('[事件订阅] 会议提醒跳过:', meetingResult.reason);
           }
         }
       } catch (err) {
