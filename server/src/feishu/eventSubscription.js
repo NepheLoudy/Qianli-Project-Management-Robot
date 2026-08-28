@@ -79,15 +79,8 @@ function startEventSubscription() {
           console.log('[事件订阅] 关键词监听跳过：非目标群 (chat_id:', chatId, ')');
         }
 
-        // 会议提醒：仅检测会议卡片
+        // 会议提醒：仅检测会议卡片（video_chat / share_chat / share_calendar 等）
         if (chatType === 'group') {
-          // 调试日志：打印消息类型和内容结构
-          const msgType = message.msg_type || message.message_type;
-          console.log(`[事件订阅] 群聊消息类型: ${msgType}`);
-          if (msgType !== 'text') {
-            console.log(`[事件订阅] 非文本消息内容:`, JSON.stringify(message.content).substring(0, 500));
-          }
-
           const meetingResult = await meetingReminderService.processMeetingMessage(data);
           if (meetingResult.handled && meetingResult.triggered) {
             console.log('[事件订阅] 会议提醒已触发 (会议卡片)');
