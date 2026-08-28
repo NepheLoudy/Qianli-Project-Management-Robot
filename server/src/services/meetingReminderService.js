@@ -147,14 +147,10 @@ async function processMeetingMessage(event) {
     processedMessageIds.delete(firstKey);
   }
 
-  const text = keywordService.extractTextContent(message);
-
-  const hasKeyword = containsMeetingKeyword(text);
-  const hasLink = containsMeetingLink(text);
+  // 仅监听会议卡片消息
   const hasMeetingCard = containsMeetingCard(message);
-
-  if (!hasKeyword && !hasLink && !hasMeetingCard) {
-    return { handled: false, reason: '未检测到会议相关内容' };
+  if (!hasMeetingCard) {
+    return { handled: false, reason: '非会议卡片消息' };
   }
 
   const now = Date.now();
@@ -165,29 +161,15 @@ async function processMeetingMessage(event) {
 
   lastTriggerTime.set(chatId, now);
 
-  const links = extractMeetingLinks(text);
-  const senderId = event.sender?.sender_id?.open_id || event.sender?.sender_id?.user_id || '';
-
-  let replyText = '<at user_id="all">所有人</at> 📢 收到会议通知！';
-  if (links.length > 0) {
-    replyText += '\n会议链接：';
-    links.forEach(link => {
-      replyText += `\n• ${link}`;
-    });
-  }
-  replyText += '\n请及时查看并参加会议！';
+  const replyText = '<at user_id="all">所有人</at> 📢 收到会议卡片通知！\n请及时查看并参加会议！';
 
   try {
     await bot.sendTextToChat(chatId, replyText);
-    console.log(`[会议提醒] 已在群聊 ${chatId} 中 @所有人 发送会议提醒 (关键词: ${hasKeyword}, 链接: ${links.length}, 卡片: ${hasMeetingCard})`);
+    console.log(`[会议提醒] 已在群聊 ${chatId} 中 @所有人 发送会议提醒 (会议卡片)`);
     return {
       handled: true,
       triggered: true,
-      hasKeyword,
-      hasLink,
       hasMeetingCard,
-      links,
-      senderId,
     };
   } catch (err) {
     console.error('[会议提醒] 发送消息失败:', err.message);
