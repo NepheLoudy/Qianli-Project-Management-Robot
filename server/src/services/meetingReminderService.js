@@ -68,6 +68,11 @@ function containsMeetingCard(message) {
       return true;
     }
 
+    // 视频会议卡片（群聊发起视频会议）
+    if (msgType === 'video_chat') {
+      return true;
+    }
+
     if (msgType === 'interactive') {
       const card = content.card || {};
       const cardSchema = card.schema || '';
@@ -133,10 +138,7 @@ async function processMeetingMessage(event) {
     return { handled: false, reason: '非群聊消息' };
   }
 
-  const monitorChatIds = config.meeting?.chatIds || [];
-  if (monitorChatIds.length > 0 && !monitorChatIds.includes(chatId)) {
-    return { handled: false, reason: '非监控群聊' };
-  }
+  // 监听机器人所在的所有群聊，无需手动配置
 
   if (processedMessageIds.has(message.message_id)) {
     return { handled: true, skipped: true, reason: '重复消息' };
