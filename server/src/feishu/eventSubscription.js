@@ -50,21 +50,12 @@ function startEventSubscription() {
           }
         }
 
-        // @机器人对话：检查是否在已配置的对话群中（owner群 或 contributers群）
+        // @机器人对话：所有群都响应 @ 提及（不再限制为配置的群）
         const chatCtx = config.getChatContext(chatId);
-        if (chatCtx) {
-          const chatResult = await chatService.processChatMessage(data);
-          if (chatResult.handled) {
-            console.log('[事件订阅] 对话服务已处理:', chatResult.isCommand ? '指令=' + chatResult.command : '正常对话', `(${chatCtx.label})`);
-            return;
-          }
-        } else if (!config.broadcastGroups.some(g => g.chatId)) {
-          // 都没配置的话，所有群都响应（兼容旧行为）
-          const chatResult = await chatService.processChatMessage(data);
-          if (chatResult.handled) {
-            console.log('[事件订阅] 对话服务已处理:', chatResult.isCommand ? '指令=' + chatResult.command : '正常对话', '(无配置，全群响应)');
-            return;
-          }
+        const chatResult = await chatService.processChatMessage(data);
+        if (chatResult.handled) {
+          console.log('[事件订阅] 对话服务已处理:', chatResult.isCommand ? '指令=' + chatResult.command : '正常对话', chatCtx ? `(${chatCtx.label})` : '');
+          return;
         }
 
         // 群聊中检查 DDL 逾期确认回复（降级到群聊后，用户在群里回复）
