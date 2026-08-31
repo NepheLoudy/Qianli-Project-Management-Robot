@@ -20,10 +20,12 @@ function isMentionedBot(message) {
   // 群聊：检查 mentions 数组
   if (!message.mentions || message.mentions.length === 0) return false;
 
-  // 通过 name 匹配（支持配置的机器人名）
+  // 通过 name 匹配（支持配置的机器人名）+ mentioned_type=app 兜底
+  // （共用应用下机器人实际名称可能与配置名不一致）
   const botName = config.bot.name;
   return message.mentions.some(m => {
     if (m.id === 'self') return true;
+    if (m.mentioned_type === 'app') return true;
     if (m.name === botName) return true;
     return false;
   });
@@ -51,6 +53,35 @@ function parseCommand(text) {
   const args = parts.slice(1);
   
   return { command, args, raw: text };
+}
+
+/**
+ * 是否审批群：本群指令能力整体切换为财务相关（转发 approval-bot）
+ */
+function isApprovalGroup(chatId) {
+  return !!config.approval.chatId && chatId === config.approval.chatId;
+}
+
+/**
+ * 转发 /approval-* 指令到 approval-bot（bambu 打印服务同款转发契约）
+ */
+async function handleApprovalCommand(command, args) {
+  const serviceUrl = config.approval.serviceUrl;
+  try {
+    const res = await fetch(`${serviceUrl}/api/chat/command`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command, args }),
+    });
+    if (!res.ok) {
+      throw new Error(`财务服务响应失败: ${res.status}`);
+    }
+    const data = await res.json();
+    return data.reply || '❌ 财务机器人响应异常';
+  } catch (err) {
+    console.error('[对话服务] 调用财务审批服务失败:', err.message);
+    return '❌ 财务审批服务暂不可用，请稍后再试';
+  }
 }
 
 async function handleHelpCommand() {
@@ -204,8 +235,19 @@ async function handlePrintCommand(command, args) {
   }
 }
 
-async function handleNormalChat(senderName) {
+async function handleNormalChat(senderName, chatId) {
   const botName = config.bot.name;
+
+  // 审批群：引导财务相关能力
+  if (isApprovalGroup(chatId)) {
+    return `你好${senderName ? '，' + senderName : ''}！我是🧾${botName}（财务审批）。
+
+本群为财务审批群，支持以下指令（发送 /help 查看完整帮助）：
+• /approval-pending 查看审批中列表
+• /approval-status  查看审批统计
+• /approval-list    查看所有申请`;
+  }
+
   return `你好${senderName ? '，' + senderName : ''}！我是🍿${botName}。
 
 我是项目管理追踪助手，你可以通过以下方式与我互动：
@@ -251,27 +293,40 @@ async function processChatMessage(event) {
   const senderName = event.sender?.sender_id?.name || '';
 
   const chatCtx = config.getChatContext(message.chat_id);
+  const isApproval = isApprovalGroup(message.chat_id);
 
   let replyText = '';
 
   const cmd = parseCommand(text);
   if (cmd) {
-    console.log('[对话服务] 解析到指令:', cmd.command, '参数:', cmd.args, '群:', chatCtx?.label || '未知');
-    const handler = commandHandlers[cmd.command];
-    if (handler) {
-      try {
-        replyText = await handler(cmd.args, chatCtx);
-      } catch (err) {
-        console.error('[对话服务] 指令执行失败:', err);
-        replyText = `❌ 指令执行失败：${err.message}`;
+    if (isApproval) {
+      // 审批群：指令能力整体切换为财务相关，仅放行 /help 与 /approval-*
+      console.log('[对话服务] 审批群指令:', cmd.command, '参数:', cmd.args);
+      if (cmd.command === '/help') {
+        replyText = await handleApprovalCommand('/approval-help', []);
+      } else if (cmd.command.startsWith('/approval-')) {
+        replyText = await handleApprovalCommand(cmd.command, cmd.args);
+      } else {
+        replyText = `🧾 本群为财务审批群，仅支持财务指令（/approval-*）\n发送 /help 查看可用财务指令`;
       }
-    } else if (cmd.command.startsWith('/print-')) {
-      replyText = await handlePrintCommand(cmd.command, cmd.args);
     } else {
-      replyText = `❌ 未知指令：${cmd.command}\n发送 /help 查看可用指令`;
+      console.log('[对话服务] 解析到指令:', cmd.command, '参数:', cmd.args, '群:', chatCtx?.label || '未知');
+      const handler = commandHandlers[cmd.command];
+      if (handler) {
+        try {
+          replyText = await handler(cmd.args, chatCtx);
+        } catch (err) {
+          console.error('[对话服务] 指令执行失败:', err);
+          replyText = `❌ 指令执行失败：${err.message}`;
+        }
+      } else if (cmd.command.startsWith('/print-')) {
+        replyText = await handlePrintCommand(cmd.command, cmd.args);
+      } else {
+        replyText = `❌ 未知指令：${cmd.command}\n发送 /help 查看可用指令`;
+      }
     }
   } else {
-    replyText = await handleNormalChat(senderName);
+    replyText = await handleNormalChat(senderName, message.chat_id);
   }
 
   if (replyText) {

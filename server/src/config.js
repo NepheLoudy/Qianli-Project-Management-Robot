@@ -60,6 +60,12 @@ module.exports = {
   keyword: {
     chatId: process.env.KEYWORD_CHAT_ID || '',
   },
+  // 审批群（approval-bot 服务）：本群指令能力整体切换为财务相关，
+  // /approval-* 指令转发给 approval-bot 处理
+  approval: {
+    chatId: process.env.APPROVAL_CHAT_ID || 'oc_1ea53731a8772400450da6ab107f8331',
+    serviceUrl: process.env.APPROVAL_SERVICE_URL || 'http://localhost:3002',
+  },
   meeting: {
     chatIds: process.env.MEETING_CHAT_IDS ? process.env.MEETING_CHAT_IDS.split(',') : [],
   },
