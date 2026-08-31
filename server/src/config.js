@@ -82,6 +82,15 @@ module.exports = {
   ticketBot: {
     url: process.env.TICKET_BOT_URL || 'http://localhost:3003',
   },
+  // ticket-bot 工单源表（与项目表同一个多维表格 base，直接读取做未结单播报）
+  // 字段/节点值默认与 ticket-bot 的配置保持一致，若 ticket-bot 侧改动需同步
+  ticketClose: {
+    tableId: process.env.TICKET_SOURCE_TABLE_ID || 'tblFA6Pj4Mv83Mb0',
+    approvalField: process.env.TICKET_APPROVAL_FIELD || '审批节点',
+    // 未审批的最后一层节点（处于该节点 = 工作已交付但尚未结单）
+    closeValue: process.env.TICKET_CLOSE_VALUE || '回执单：是否结单',
+    deadlineField: process.env.TICKET_DEADLINE_FIELD || '理想结单时间',
+  },
   broadcastGroups,
 };
 

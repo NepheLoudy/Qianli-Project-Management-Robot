@@ -8,7 +8,7 @@ const bitableApi = {
     const query = {};
     if (params.page_size) query.page_size = params.page_size;
     if (params.page_token) query.page_token = params.page_token;
-    if (params.filter) query.filter = JSON.stringify(params.filter);
+    if (params.filter) query.filter = params.filter;
     if (params.sort) query.sort = JSON.stringify(params.sort);
 
     const res = await requestAPI(

@@ -180,7 +180,7 @@ function countQualifiedNodes(nodes) {
   return count;
 }
 
-function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote, mentionField = 'owner', pausedProjects = []) {
+function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote, mentionField = 'owner', pausedProjects = [], ticketBuckets = { urgent: [], week: [] }) {
   const elements = [];
 
   elements.push({
@@ -240,6 +240,34 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
     });
   }
 
+  // ticket-bot 联动：未结单工单按理想结单时间分栏（只列处理人名字不 @，结单提醒由 ticket-bot 私聊完成）
+  const ticketUrgentCount = ticketBuckets.urgent.length;
+  if (ticketUrgentCount > 0) {
+    elements.push({ tag: 'hr' });
+    elements.push({
+      tag: 'markdown',
+      content: `**🎫 工单结单加急（2日内，${ticketUrgentCount}个）**`,
+    });
+    const lines = ticketBuckets.urgent.map(t => {
+      const when = t.daysLeft < 0 ? `🔴 已超理想结单时间 ${Math.abs(t.daysLeft)} 天` : t.daysLeft === 0 ? '🟠 今天到达理想结单时间' : `🟠 ${t.daysLeft}天后到达理想结单时间`;
+      return `🎫 👤 ${t.handlerName} **${t.title}** - ${when}`;
+    });
+    elements.push({ tag: 'markdown', content: lines.join('\n') });
+  }
+
+  const ticketWeekCount = ticketBuckets.week.length;
+  if (ticketWeekCount > 0) {
+    elements.push({ tag: 'hr' });
+    elements.push({
+      tag: 'markdown',
+      content: `**🎫 工单7日内待结单（${ticketWeekCount}个）**`,
+    });
+    const lines = ticketBuckets.week.map(t => {
+      return `🎫 👤 ${t.handlerName} **${t.title}** - ${t.daysLeft}天后到达理想结单时间`;
+    });
+    elements.push({ tag: 'markdown', content: lines.join('\n') });
+  }
+
   // pending: 意外暂停的项目单独说明（只列名字不 @，避免打扰）
   const pausedCount = pausedProjects.length;
   if (pausedCount > 0) {
@@ -290,8 +318,8 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
 }
 
 async function sendDDLReport(overdueProjects, urgentProjects, weekProjects, quote, options = {}) {
-  const { webhookUrl, mentionField = 'owner', pausedProjects = [] } = options;
-  const card = buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote, mentionField, pausedProjects);
+  const { webhookUrl, mentionField = 'owner', pausedProjects = [], ticketBuckets = { urgent: [], week: [] } } = options;
+  const card = buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote, mentionField, pausedProjects, ticketBuckets);
   return sendMessage(card, webhookUrl);
 }
 

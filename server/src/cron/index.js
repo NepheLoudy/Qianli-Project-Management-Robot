@@ -4,6 +4,7 @@ const path = require('path');
 const projectService = require('../services/projectService');
 const { sendDDLReport, getRandomQuote } = require('../feishu/bot');
 const ddlConfirmService = require('../services/ddlConfirmService');
+const ticketCloseService = require('../services/ticketCloseService');
 const config = require('../config');
 
 const broadcastHistory = [];
@@ -83,6 +84,16 @@ async function runDDLBroadcast() {
         console.log(`[DDL播报] 今日语录: "${quote.words}" by ${quote.person || '佚名'}`);
       }
 
+      // 未结单工单（ticket-bot 源表）按理想结单时间分桶，全部群共用同一份数据
+      // 读取失败只降级为不显示工单分栏，不影响 DDL 播报
+      let ticketBuckets = { urgent: [], week: [] };
+      try {
+        ticketBuckets = await ticketCloseService.getUnclosedBuckets();
+        console.log(`[DDL播报] 未结单工单: 2日内加急:${ticketBuckets.urgent.length} 7日内:${ticketBuckets.week.length}`);
+      } catch (err) {
+        console.warn(`[DDL播报] 未结单工单读取失败（本次播报不含工单分栏）: ${err.message}`);
+      }
+
       // 逐群播报：每个群只播报对应人员字段有人的项目
       // 同一 webhook / 同一群聊ID 只发送一次，避免同一群被重复播报
       const broadcastTargets = config.broadcastGroups.filter(g => g.webhookUrl);
@@ -109,6 +120,7 @@ async function runDDLBroadcast() {
           webhookUrl: group.webhookUrl,
           mentionField: group.mentionField,
           pausedProjects: groupData.paused,
+          ticketBuckets,
         });
 
         if (group.mentionField === 'owner') {
