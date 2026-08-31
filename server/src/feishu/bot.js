@@ -85,9 +85,10 @@ async function sendMessage(cardContent, webhookUrl) {
   return data;
 }
 
+// 卡片 markdown 的 @ 语法是 <at id=ou_xxx>（user_id 写法仅适用于 im/v1 文本消息，卡片中不生效）
 function buildAtTag(userId, name) {
   if (!userId) return '';
-  return `<at user_id="${userId}">${name || ''}</at>`;
+  return `<at id="${userId}">${name || ''}</at>`;
 }
 
 // 获取项目在指定人员字段下的成员列表（mentionField 即多维表格字段名，对应各播报群）
@@ -137,6 +138,8 @@ function renderTreeNode(node, mentionField, categoryInfo, ancestors = [], isLast
     line = `${prefix}**📁 ${category}组 - ${name}**`;
   } else if (isQualified) {
     const mentionTags = buildMentionTags(node, mentionField);
+    // @ 标签为空（成员无 id 或未指派）时用纯文本指出负责人，保证任何情况都能看到责任人
+    const personDisplay = mentionTags || `👤 ${getMentionNames(node, mentionField)}`;
     let statusText = '';
     if (ddlCategory === 'overdue') {
       statusText = `已逾期 ${Math.abs(daysLeft)} 天`;
@@ -146,7 +149,7 @@ function renderTreeNode(node, mentionField, categoryInfo, ancestors = [], isLast
       statusText = `${daysLeft}天后到期`;
     }
     const checkbox = daysLeft < 0 ? '🔴' : daysLeft <= 2 ? '🟠' : '🟢';
-    line = `${prefix}${checkbox} ${mentionTags} **${category}组 - ${name}** - ${statusText}\n${'   '.repeat(level)}  优先级: ${priorityLabel}，截止: ${ddlFormatted}`;
+    line = `${prefix}${checkbox} ${personDisplay} **${category}组 - ${name}** - ${statusText}\n${'   '.repeat(level)}  优先级: ${priorityLabel}，截止: ${ddlFormatted}`;
   } else {
     line = `${prefix}**${category}组 - ${name}**`;
   }
