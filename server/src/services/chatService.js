@@ -20,12 +20,13 @@ function isMentionedBot(message) {
   // 群聊：检查 mentions 数组
   if (!message.mentions || message.mentions.length === 0) return false;
 
-  // 通过 name 匹配（支持配置的机器人名）+ mentioned_type=app 兜底
-  // （共用应用下机器人实际名称可能与配置名不一致）
+  // 通过 name 匹配（支持配置的机器人名）+ mentioned_type=app/bot 兜底
+  // （共用应用下机器人实际名称可能与配置名不一致；真实事件里 @机器人 的
+  //  mentioned_type 为 "bot"、id 为 {open_id,...} 对象，均需兼容）
   const botName = config.bot.name;
   return message.mentions.some(m => {
     if (m.id === 'self') return true;
-    if (m.mentioned_type === 'app') return true;
+    if (m.mentioned_type === 'app' || m.mentioned_type === 'bot') return true;
     if (m.name === botName) return true;
     return false;
   });

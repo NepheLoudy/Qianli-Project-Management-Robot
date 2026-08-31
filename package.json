@@ -1,5 +1,8 @@
 {
   "dependencies": {
     "ssh2": "^1.17.0"
+  },
+  "scripts": {
+    "push": "node push.js"
   }
 }

@@ -6,8 +6,7 @@ const projectService = require('./services/projectService');
 const { startCronJobs, runDDLBroadcast, getBroadcastHistory, getCronStatus } = require('./cron');
 const logService = require('./services/logService');
 const keywordService = require('./services/keywordService');
-const chatService = require('./services/chatService');
-const { startEventSubscription } = require('./feishu/eventSubscription');
+const { startEventSubscription, handleMessageEvent } = require('./feishu/eventSubscription');
 
 const app = express();
 
@@ -176,18 +175,13 @@ app.post('/api/feishu/event', async (req, res) => {
       res.json({ code: 0, msg: 'success' });
       return;
     }
-    
+
     setImmediate(async () => {
       try {
-        const chatResult = await chatService.processChatMessage(event);
-        if (chatResult.handled) {
-          console.log('[HTTP回调] 对话服务已处理:', chatResult.isCommand ? '指令=' + chatResult.command : '正常对话');
-          return;
-        }
-
-        const result = await keywordService.processMessageEvent(event);
-        if (result.matched) {
-          console.log('关键词匹配成功:', result.keywords);
+        // 与长连接同一套消息处理管道（对话/指令/DDL确认/关键词/会议提醒）
+        const result = await handleMessageEvent(event);
+        if (result && result.handled) {
+          console.log('[HTTP回调] 对话服务已处理:', result.isCommand ? '指令=' + result.command : '正常对话');
         }
       } catch (err) {
         console.error('处理消息事件失败:', err);

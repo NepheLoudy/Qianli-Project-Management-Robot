@@ -45,7 +45,7 @@
   - `/history` — 查看近期播报历史
   - `/print-*` — 3D 打印指令转发
 - 消息去重机制，防止重复处理
-- 支持飞书长连接模式，无需公网地址
+- 事件由 feishu-gateway（本机唯一长连接）转发到 `/api/feishu/event`，本服务 `FEISHU_USE_LONG_CONNECTION=false`
 
 ### 6. 逾期项目私聊确认
 - DDL 播报时自动识别逾期项目，向负责人（owner）私聊发送确认消息
@@ -218,8 +218,8 @@ BITABLE_LOG_TABLE_ID=tbl_日志表ID
 BITABLE_KEYWORD_TABLE_ID=tbl_关键词表ID
 BITABLE_QUOTE_TABLE_ID=tbl_语录表ID
 
-# 事件订阅（长连接模式，推荐）
-FEISHU_USE_LONG_CONNECTION=true
+# 事件订阅（统一由 feishu-gateway 持有长连接，本服务走 HTTP 回调）
+FEISHU_USE_LONG_CONNECTION=false
 
 # 机器人名称
 BOT_NAME=爆米花机-对话型
@@ -260,14 +260,13 @@ npm start
 
 ### 四、配置事件订阅
 
-**推荐使用长连接模式**（无需公网地址）：
+**统一网关模式（2026-09 起，推荐）**：
 
-1. 飞书开发者后台 → 事件订阅
-2. 订阅方式选择「通过长连接接收事件」
-3. 添加事件：接收消息（`im.message.receive_v1`）
-4. `.env` 中设置 `FEISHU_USE_LONG_CONNECTION=true`
+1. 飞书开发者后台 → 事件订阅：订阅方式选择「通过长连接接收事件」，添加事件 `im.message.receive_v1`
+2. 长连接由 **feishu-gateway**（本机 :3010）统一持有，事件转发到本服务 `POST /api/feishu/event`
+3. 本服务 `.env` 设置 `FEISHU_USE_LONG_CONNECTION=false`（长连接与 HTTP 回调同一套消息处理管道，见 `eventSubscription.js` 的 `handleMessageEvent`）
 
-> 也可使用 HTTP 回调模式（需公网 HTTPS 地址），设置 `FEISHU_USE_LONG_CONNECTION=false` 并配置 `FEISHU_VERIFICATION_TOKEN` / `FEISHU_ENCRYPT_KEY`。
+> 不要再让本服务自己开长连接：共用应用的多条长连接会被飞书**随机分发**事件，导致指令时灵时不灵。HTTP 回调模式（公网 HTTPS 直连）仍可用：设置 `FEISHU_USE_LONG_CONNECTION=false` 并配置 `FEISHU_VERIFICATION_TOKEN` / `FEISHU_ENCRYPT_KEY`。
 
 ### 五、配置关键词监听
 
