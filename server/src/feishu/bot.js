@@ -129,7 +129,7 @@ function buildTreePrefix(level, isLast, ancestors) {
 }
 
 function renderTreeNode(node, mentionField, categoryInfo, ancestors = [], isLast = true) {
-  const { level, name, category, isQualified, daysLeft, ddlCategory, priorityLabel, ddlFormatted, children, hasChildren } = node;
+  const { level, name, category, status, isQualified, daysLeft, ddlCategory, priorityLabel, ddlFormatted, children, hasChildren } = node;
 
   const prefix = buildTreePrefix(level, isLast, ancestors);
 
@@ -147,6 +147,10 @@ function renderTreeNode(node, mentionField, categoryInfo, ancestors = [], isLast
       statusText = daysLeft === 0 ? '今天到期' : `还剩 ${daysLeft} 天`;
     } else if (ddlCategory === 'week') {
       statusText = `${daysLeft}天后到期`;
+    }
+    // waiting: 还没有人做，标注待认领
+    if (status === 'waiting') {
+      statusText += ' · ⏳待认领';
     }
     const checkbox = daysLeft < 0 ? '🔴' : daysLeft <= 2 ? '🟠' : '🟢';
     line = `${prefix}${checkbox} ${personDisplay} **${category}组 - ${name}** - ${statusText}\n${'   '.repeat(level)}  优先级: ${priorityLabel}，截止: ${ddlFormatted}`;
@@ -176,7 +180,7 @@ function countQualifiedNodes(nodes) {
   return count;
 }
 
-function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote, mentionField = 'owner') {
+function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote, mentionField = 'owner', pausedProjects = []) {
   const elements = [];
 
   elements.push({
@@ -236,6 +240,23 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
     });
   }
 
+  // pending: 意外暂停的项目单独说明（只列名字不 @，避免打扰）
+  const pausedCount = pausedProjects.length;
+  if (pausedCount > 0) {
+    elements.push({ tag: 'hr' });
+    elements.push({
+      tag: 'markdown',
+      content: `**⏸️ 意外暂停项目（${pausedCount}个，需确认恢复或截止）**`,
+    });
+    const pausedLines = pausedProjects.map(p => {
+      return `⏸️ 👤 ${getMentionNames(p, mentionField)} **${p.category || '其他'}组 - ${p.name}**`;
+    });
+    elements.push({
+      tag: 'markdown',
+      content: pausedLines.join('\n'),
+    });
+  }
+
   if (overdueCount === 0 && urgentCount === 0 && weekCount === 0) {
     elements.push({
       tag: 'markdown',
@@ -269,8 +290,8 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
 }
 
 async function sendDDLReport(overdueProjects, urgentProjects, weekProjects, quote, options = {}) {
-  const { webhookUrl, mentionField = 'owner' } = options;
-  const card = buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote, mentionField);
+  const { webhookUrl, mentionField = 'owner', pausedProjects = [] } = options;
+  const card = buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote, mentionField, pausedProjects);
   return sendMessage(card, webhookUrl);
 }
 

@@ -139,7 +139,7 @@ project-management-robot/
 | contributers | 人员 | 通用贡献者（保留字段） |
 | ddl | 日期 | 截止日期 |
 | priority | 单选 | 优先级（high/medium/low） |
-| status | 单选 | 状态（pending/in_progress/waiting/completed） |
+| status | 单选 | 状态（pending/in_progress/waiting/completed/died） |
 | category | 文本 | 分组（如：产品组、研发组） |
 | fileToken | 文本 | 关联文档 Token（可选） |
 | parentId | 关联/文本 | 父项目 ID（父子层级，可选） |
@@ -147,6 +147,17 @@ project-management-robot/
 | updatedAt | 最后更新时间 | 更新时间 |
 
 > **注意**：`owner`、`dkyjcontributers`、`sjcontributers`、`xycontributers` 使用飞书多维表格「人员」字段类型。播报时每个群只播报对应字段有人的项目。
+
+**status 状态语义与播报规则**：
+
+| 状态 | 含义 | 播报规则 |
+|------|------|----------|
+| in_progress | 进行中 | 正常参与 DDL 播报（逾期/紧急/本周） |
+| waiting | 还没有人做 | 参与 DDL 播报并标注「⏳待认领」；每日播报节点同时联动 ticket-bot 触发一次「无人接单工单」汇总播报 |
+| pending | 出现意外暂停 | 不进 DDL 分类，在卡片「⏸️ 意外暂停项目」区块单独说明（只列名字不 @） |
+| died | 项目已截止 | 不播报，不再管理 |
+| completed | 已完成 | 不播报 |
+| ddl 未填写 | —— | 不参与 DDL 播报（暂停 pending 项目除外，其单独说明区块不看 DDL） |
 
 **表2：维护日志（表ID: tbl_log）**
 

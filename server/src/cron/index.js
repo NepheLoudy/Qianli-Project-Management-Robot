@@ -108,6 +108,7 @@ async function runDDLBroadcast() {
         const sendResult = await sendDDLReport(groupData.overdue, groupData.urgent, groupData.week, quote, {
           webhookUrl: group.webhookUrl,
           mentionField: group.mentionField,
+          pausedProjects: groupData.paused,
         });
 
         if (group.mentionField === 'owner') {
@@ -139,6 +140,20 @@ async function runDDLBroadcast() {
       }
 
       console.log(`[DDL播报] 播报完成，共 ${groupStats.length} 个群 (尝试: ${attempt})`);
+
+      // 联动 ticket-bot：DDL 播报节点同时触发一次「待处理/无人接单工单」汇总播报
+      // 失败只记日志，不影响 DDL 播报结果
+      try {
+        const res = await fetch(`${config.ticketBot.url}/api/bot/test-summary`, { method: 'POST' });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          console.log(`[DDL播报] 已联动 ticket-bot 播报未接单工单: ${JSON.stringify(data.result || data)}`);
+        } else {
+          console.warn(`[DDL播报] ticket-bot 联动返回异常: HTTP ${res.status} ${JSON.stringify(data)}`);
+        }
+      } catch (err) {
+        console.warn(`[DDL播报] ticket-bot 联动失败（不影响播报）: ${err.message}`);
+      }
 
       // 逾期确认：基于 owner 字段过滤的数据，递归收集所有逾期项目
       if (!ownerData) {

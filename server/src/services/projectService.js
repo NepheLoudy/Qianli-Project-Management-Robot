@@ -212,9 +212,11 @@ async function getDDLForBroadcastWithHierarchy(filter = 'all', preloadedProjects
   }
 
   function getDDLCategory(item) {
-    // 只播报 in_progress 和 waiting 状态的项目
+    // died: 项目已截止，不再管理；其余非进行中/等待认领的状态也不播报
     if (item.status !== 'in_progress' && item.status !== 'waiting') return 'none';
     if (!passesFilter(item)) return 'none';
+    // 未填 DDL（或日期非法）的项目不播报
+    if (!item.ddl || !dayjs(item.ddl).isValid()) return 'none';
     if (item.daysLeft < 0) return 'overdue';
     if (item.daysLeft <= alertDays) return 'urgent';
     if (item.daysLeft <= 7) return 'week';
@@ -289,10 +291,15 @@ async function getDDLForBroadcastWithHierarchy(filter = 'all', preloadedProjects
     return false;
   }
 
+  // pending: 意外暂停的项目，不参与 DDL 分类，单独收集后在卡片中单独说明
+  // （暂停中的项目往往没有明确 DDL，因此不检查 ddl；died 与其他状态不列）
+  const pausedProjects = allProjects.filter(p => p.status === 'pending' && passesFilter(p));
+
   return {
     overdue: prunedHierarchy.filter(n => hasQualifiedDescendant(n, 'overdue')),
     urgent: prunedHierarchy.filter(n => hasQualifiedDescendant(n, 'urgent')),
     week: prunedHierarchy.filter(n => hasQualifiedDescendant(n, 'week')),
+    paused: pausedProjects,
     fullHierarchy: prunedHierarchy,
   };
 }
