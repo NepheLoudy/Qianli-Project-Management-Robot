@@ -86,14 +86,23 @@ async function runDDLBroadcast() {
         console.log(`[DDL播报] 今日语录: "${quote.words}" by ${quote.person || '佚名'}`);
       }
 
-      // 未结单工单（ticket-bot 源表）按理想结单时间分桶，全部群共用同一份数据
-      // 读取失败只降级为不显示工单分栏，不影响 DDL 播报
+      // 未结单工单：优先按「负责人所属组别」分组（ticket-bot 计算，各组只看到自己的工单，
+      // 播报对象为指定负责人/补充负责人）；分组数据失败时降级为全群共用同一份（不分组），
+      // 仍失败则本次不含工单分栏，均不影响 DDL 播报本身
       let ticketBuckets = { urgent: [], week: [] };
+      let groupedTickets = null;
       try {
-        ticketBuckets = await ticketCloseService.getUnclosedBuckets();
-        console.log(`[DDL播报] 未结单工单: 2日内加急:${ticketBuckets.urgent.length} 7日内:${ticketBuckets.week.length}`);
+        groupedTickets = await ticketCloseService.getGroupedBuckets();
+        const total = Object.values(groupedTickets).reduce((n, b) => n + b.urgent.length + b.week.length, 0);
+        console.log(`[DDL播报] 未结单工单(按组分桶): 群数=${Object.keys(groupedTickets).length} 工单数=${total}`);
       } catch (err) {
-        console.warn(`[DDL播报] 未结单工单读取失败（本次播报不含工单分栏）: ${err.message}`);
+        console.warn(`[DDL播报] 按组工单读取失败，降级为全群同一份: ${err.message}`);
+        try {
+          ticketBuckets = await ticketCloseService.getUnclosedBuckets();
+          console.log(`[DDL播报] 未结单工单: 2日内加急:${ticketBuckets.urgent.length} 7日内:${ticketBuckets.week.length}`);
+        } catch (err2) {
+          console.warn(`[DDL播报] 未结单工单读取失败（本次播报不含工单分栏）: ${err2.message}`);
+        }
       }
 
       // 逐群播报：每个群只播报对应人员字段有人的项目
@@ -127,7 +136,8 @@ async function runDDLBroadcast() {
           webhookUrl: group.webhookUrl,
           mentionField: group.mentionField,
           pausedProjects: groupData.paused,
-          ticketBuckets,
+          // 按组分桶的未结单工单：各组只看负责人属于本群的工单；分组数据不可用时降级为共用
+          ticketBuckets: (groupedTickets && groupedTickets[group.chatId]) || ticketBuckets,
         });
         deliveredGroups.add(group.webhookUrl);
 

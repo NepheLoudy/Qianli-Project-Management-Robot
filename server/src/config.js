@@ -78,7 +78,7 @@ module.exports = {
   printServer: {
     url: process.env.PRINT_SERVER_URL || 'http://localhost:3001',
   },
-  // ticket-bot 服务地址（DDL 播报后联动触发其未接单工单汇总播报）
+  // ticket-bot 服务地址（未结单工单按「负责人所属组别」分组数据的来源，供 DDL 播报分组分栏）
   ticketBot: {
     url: process.env.TICKET_BOT_URL || 'http://localhost:3003',
   },

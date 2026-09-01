@@ -78,6 +78,22 @@ async function getUnclosedBuckets() {
   return { urgent, week };
 }
 
+/**
+ * 从 ticket-bot 获取按「负责人所属组别」分组的未结单工单
+ *
+ * ticket-bot 侧负责：负责人取指定负责人→补充负责人（不取发起人）、
+ * 人员组别解析（USER_GROUPS → 通讯录部门 → 面向组别兜底）、组别到群 chatId 的映射。
+ *
+ * @returns {Promise<Object<{urgent: Array, week: Array}>>} 以群 chatId 为键
+ */
+async function getGroupedBuckets() {
+  const res = await fetch(`${config.ticketBot.url}/api/tickets/unclosed-by-group`);
+  if (!res.ok) throw new Error(`ticket-bot API HTTP ${res.status}`);
+  const data = await res.json();
+  return data.result || {};
+}
+
 module.exports = {
   getUnclosedBuckets,
+  getGroupedBuckets,
 };
