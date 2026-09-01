@@ -72,6 +72,8 @@ async function runDDLBroadcast() {
 
   let attempt = 0;
   let lastError = null;
+  // 已成功发送的群（跨重试持久）：重试只补发失败的群，避免已发过的群收到重复卡片
+  const deliveredGroups = new Set();
 
   while (attempt < RETRY_CONFIG.maxAttempts) {
     attempt++;
@@ -95,7 +97,8 @@ async function runDDLBroadcast() {
       }
 
       // 逐群播报：每个群只播报对应人员字段有人的项目
-      // 同一 webhook / 同一群聊ID 只发送一次，避免同一群被重复播报
+      // 同一 webhook / 同一群聊ID 只发送一次，避免同一群被重复播报；
+      // 重试时跳过已成功发送的群
       const broadcastTargets = config.broadcastGroups.filter(g => g.webhookUrl);
       const seenWebhooks = new Set();
       const seenChatIds = new Set();
@@ -104,6 +107,10 @@ async function runDDLBroadcast() {
       let ownerData = null;
 
       for (const group of broadcastTargets) {
+        if (deliveredGroups.has(group.webhookUrl)) {
+          console.log(`[DDL播报] ${group.label} 此前尝试已发送成功，重试时跳过`);
+          continue;
+        }
         if (seenWebhooks.has(group.webhookUrl)) {
           console.warn(`[DDL播报] ${group.label} 的 webhook 与其他群重复，跳过以避免重复播报`);
           continue;
@@ -122,6 +129,7 @@ async function runDDLBroadcast() {
           pausedProjects: groupData.paused,
           ticketBuckets,
         });
+        deliveredGroups.add(group.webhookUrl);
 
         if (group.mentionField === 'owner') {
           result1 = sendResult;
@@ -152,20 +160,6 @@ async function runDDLBroadcast() {
       }
 
       console.log(`[DDL播报] 播报完成，共 ${groupStats.length} 个群 (尝试: ${attempt})`);
-
-      // 联动 ticket-bot：DDL 播报节点同时触发一次「待处理/无人接单工单」汇总播报
-      // 失败只记日志，不影响 DDL 播报结果
-      try {
-        const res = await fetch(`${config.ticketBot.url}/api/bot/test-summary`, { method: 'POST' });
-        const data = await res.json().catch(() => ({}));
-        if (res.ok) {
-          console.log(`[DDL播报] 已联动 ticket-bot 播报未接单工单: ${JSON.stringify(data.result || data)}`);
-        } else {
-          console.warn(`[DDL播报] ticket-bot 联动返回异常: HTTP ${res.status} ${JSON.stringify(data)}`);
-        }
-      } catch (err) {
-        console.warn(`[DDL播报] ticket-bot 联动失败（不影响播报）: ${err.message}`);
-      }
 
       // 逾期确认：基于 owner 字段过滤的数据，递归收集所有逾期项目
       if (!ownerData) {

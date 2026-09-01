@@ -11,7 +11,8 @@ const { startEventSubscription, handleMessageEvent } = require('./feishu/eventSu
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+// 网关会转发完整消息事件（长文本/富文本可能超过默认 100kb），放宽 body 限制
+app.use(express.json({ limit: '2mb' }));
 
 app.get('/api/health', (req, res) => {
   res.json({

@@ -18,7 +18,12 @@ const { Client } = require('ssh2');
 const os = require('os');
 const path = require('path');
 
-require('dotenv').config({ path: path.join(__dirname, 'server', '.env') });
+// 轻量读取 server/.env 中的 NAS_* 配置（根目录无 dotenv 依赖，不额外安装）
+const envText = require('fs').readFileSync(path.join(__dirname, 'server', '.env'), 'utf8');
+for (const line of envText.split('\n')) {
+  const m = line.match(/^\s*(NAS_[A-Z_]+)\s*=\s*(.*)\s*$/);
+  if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2].trim();
+}
 
 const commitMessage = process.argv[2] || 'update: 代码更新';
 const TAR_NAME = 'knowledge-tracker-deploy.tar.gz';
