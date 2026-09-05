@@ -26,10 +26,10 @@ async function handleMessageEvent(data) {
       }
       // p2p 消息未被 DDL确认处理，直接交给 chatService（不检查 chatId）
       const chatResult = await chatService.processChatMessage(data);
-      if (chatResult.handled) {
-        console.log('[事件订阅] 对话服务已处理(p2p):', chatResult.isCommand ? '指令=' + chatResult.command : '正常对话');
-        return;
-      }
+      console.log('[事件订阅] p2p 消息处理完毕:', chatResult.isCommand ? '指令=' + chatResult.command : (chatResult.handled ? '正常对话' : '未命中对话'));
+      // p2p 到此结束：后续环节（群 DDL 确认/关键词/会议）均为群聊专属，
+      // 不 return 会再次调用 chatService，靠消息去重副作用短路
+      return;
     }
 
     // @机器人对话：所有群都响应 @ 提及（不再限制为配置的群）

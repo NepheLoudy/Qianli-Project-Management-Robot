@@ -87,6 +87,15 @@ app.get('/api/projects/ddl-alerts', async (req, res) => {
 app.post('/api/bot/test-broadcast', async (req, res) => {
   try {
     const result = await runDDLBroadcast();
+    if (result === null) {
+      // 今日已成功播报过被跳过：明确告知，避免前端误报「测试播报已发送」
+      return res.json({
+        success: true,
+        skipped: true,
+        message: '今日已播报过，未重复发送（需要补发请用各群 /test-ddl）',
+        result: null,
+      });
+    }
     res.json({ success: true, result });
   } catch (err) {
     console.error('测试播报失败:', err);

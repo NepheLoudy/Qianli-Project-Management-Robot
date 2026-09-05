@@ -104,11 +104,14 @@ async function handleHelpCommand() {
 基础指令：
   /help      显示此帮助信息
   /status    查看服务运行状态
-  /test-ddl  测试DDL播报
-  /keywords  查看当前监听关键词
+  /test-ddl  测试DDL播报（与正式播报同内容，可作部分失败后的补发）
+  /keywords  查看关键词配置（仅展示；当前记录群内全部发言，不按关键词过滤）
   /history   查看最近播报历史
 
-3D打印指令：
+财务审批指令（审批群内自动切换为 /approval-*，转发 approval-bot）：
+  /approval-help /approval-list /approval-pending /approval-status /approval-urge
+
+3D打印指令（转发 bambu）：
   /print-help     显示打印相关帮助
   /print-status   查看打印机状态
   /print-list     查看预约列表
@@ -129,7 +132,8 @@ async function handleStatusCommand() {
     '',
     `服务状态：✅ 运行中`,
     `当前时间：${dayjs().format('YYYY-MM-DD HH:mm:ss')}`,
-    `飞书长连接：${config.feishuEvent.useLongConnection ? '✅ 已启用' : '❌ 未启用'}`,
+    // 网关模式下 useLongConnection=false 是正确配置，不该显示 ❌
+    `事件接入：${config.feishuEvent.useLongConnection ? '长连接模式（仅调试用，会与网关抢事件）' : '✅ 网关转发模式（feishu-gateway）'}`,
     ``,
     `📋 关键词监听：${keywordsConfig.enabled ? '✅ 已启用' : '❌ 未启用'}`,
     `   监听关键词数量：${keywordsConfig.keywords.length} 个`,
@@ -157,6 +161,7 @@ async function handleTestDDLCommand(chatCtx, chatType) {
   }
   try {
     const projectService = require('./projectService');
+    const ticketCloseService = require('./ticketCloseService');
     const { sendDDLReport, getRandomQuote } = require('../feishu/bot');
 
     const allProjects = await projectService.getProjects();
@@ -164,9 +169,28 @@ async function handleTestDDLCommand(chatCtx, chatType) {
     const mentionField = chatCtx?.mentionField || 'owner';
     const webhookUrl = chatCtx?.webhookUrl;
 
-    const { overdue, urgent, week } = await projectService.getDDLForBroadcastWithHierarchy(mentionField, allProjects);
+    const { overdue, urgent, week, paused } = await projectService.getDDLForBroadcastWithHierarchy(mentionField, allProjects);
 
-    await sendDDLReport(overdue, urgent, week, quote, { webhookUrl, mentionField });
+    // 与正式播报取同一份「未结单工单」分栏数据（分组失败降级共用，再失败不含分栏），
+    // 保证 /test-ddl 补发卡与正式卡等价（否则补出来的卡缺工单分栏与意外暂停区块）
+    let ticketBuckets = { urgent: [], week: [] };
+    let groupedTickets = null;
+    try {
+      groupedTickets = await ticketCloseService.getGroupedBuckets();
+    } catch (err) {
+      try {
+        ticketBuckets = await ticketCloseService.getUnclosedBuckets();
+      } catch (err2) {
+        console.warn('[测试DDL] 未结单工单读取失败（本次不含工单分栏）:', err2.message);
+      }
+    }
+
+    await sendDDLReport(overdue, urgent, week, quote, {
+      webhookUrl,
+      mentionField,
+      pausedProjects: paused,
+      ticketBuckets: (groupedTickets && groupedTickets[chatCtx?.chatId]) || ticketBuckets,
+    });
 
     const label = chatCtx?.label || '默认';
     return `✅ DDL测试播报已发送（${label}）\n逾期:${overdue.length} 紧急:${urgent.length} 本周:${week.length}`;

@@ -98,7 +98,7 @@ const KeywordTracker: React.FC = () => {
     <div>
       <div className="card">
         <div className="flex justify-between items-center mb-16">
-          <div className="card-title" style={{ marginBottom: 0 }}>群聊关键词监听</div>
+          <div className="card-title" style={{ marginBottom: 0 }}>群聊发言记录</div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn btn-secondary" onClick={loadRecords}>
               刷新
@@ -114,7 +114,7 @@ const KeywordTracker: React.FC = () => {
             </span>
           </div>
           <div>
-            <span style={{ color: '#4e5969' }}>监听关键词：</span>
+            <span style={{ color: '#4e5969' }}>历史关键词配置（仅展示，当前记录全部发言）：</span>
             {config.keywords.length > 0 ? (
               config.keywords.map((kw, idx) => (
                 <span
@@ -137,7 +137,7 @@ const KeywordTracker: React.FC = () => {
             )}
           </div>
           <div style={{ marginTop: 8, fontSize: 12, color: '#86909c' }}>
-            提示：修改关键词配置文件后需重启服务生效。数据以「关键词分组 - 消息记录」的父子层级结构展示。
+            提示：自 v23 起记录目标群的全部发言（父记录固定「全部发言」），不再按关键词过滤；keywords.json 仅保留展示兼容。
           </div>
         </div>
 
@@ -274,10 +274,10 @@ const KeywordTracker: React.FC = () => {
       <div className="card">
         <div className="card-title">功能说明</div>
         <div style={{ lineHeight: 1.8, color: '#4e5969' }}>
-          <p>🔍 自动监听群聊消息，匹配预设关键词后自动记录</p>
-          <p>📁 按关键词分组，以父子层级结构展示（父记录=关键词，子记录=消息）</p>
-          <p>📝 记录内容包括：时间、发送人、消息内容、图片、消息链接</p>
-          <p>⚙️ 关键词配置文件：<code>server/src/config/keywords.json</code></p>
+          <p>🔍 自动记录目标群（KEYWORD_CHAT_ID）的全部群聊发言（@机器人的消息走对话链路，不记录）</p>
+          <p>📁 以父子层级结构展示（父记录=「全部发言」，子记录=单条消息）</p>
+          <p>📝 记录内容包括：时间、发送人、消息内容、图片</p>
+          <p>⚙️ 记录开关：<code>server/src/config/keywords.json</code> 的 enabled（关键词列表仅展示兼容）</p>
           <p>📊 数据存储在飞书多维表格的「关键词监听」表中</p>
         </div>
       </div>

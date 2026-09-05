@@ -46,23 +46,33 @@ async function requestAPI(method, path, params = {}) {
 
   const options = {
     method,
+    // 无超时的 fetch 挂起会拖住事件管道与定时任务；网关/代理错误页非 JSON 时给出可读错误
+    signal: AbortSignal.timeout(15000),
     headers: {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json; charset=utf-8',
     },
   };
 
+  const parseJson = async (res) => {
+    try {
+      return await res.json();
+    } catch (err) {
+      throw new Error(`飞书 API 返回非 JSON 响应 (HTTP ${res.status})`);
+    }
+  };
+
   if (method === 'GET') {
     const query = new URLSearchParams(params).toString();
     const fullUrl = query ? `${url}?${query}` : url;
     const res = await fetch(fullUrl, options);
-    return res.json();
+    return parseJson(res);
   } else {
     const res = await fetch(url, {
       ...options,
       body: JSON.stringify(params),
     });
-    return res.json();
+    return parseJson(res);
   }
 }
 

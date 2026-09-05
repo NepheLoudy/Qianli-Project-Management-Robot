@@ -1,8 +1,10 @@
 name: Deploy
 
+# 已停用 push 自动部署：现部署统一走项目内 `npm run push`（SFTP），
+# 且本工作流生成的 .env 模板（旧端口/长连接=true/缺 TICKET_* 等键）会覆盖 push 上传的正确配置。
+# 仅保留手动触发入口，供紧急时人工使用；启用前须先同步下方 env 生成段。
 on:
-  push:
-    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   deploy-server:

@@ -210,3 +210,14 @@
 
 ### v47 · 2026-09-03 · `a39f982` · docs
 **AGENTS.md 增加「顶层规则与交互性」段（独立会话内联交互契约，开工先读顶层总表）**
+
+## 阶段七 · 全项目审查修复批次（2026-09-06）
+
+### v54 · 2026-09-06 · 随本提交落地 · fix
+**全项目审查修复：停用冲突的 Actions 部署 + p2p 双调 + /test-ddl 等价补发 + 文档对齐**
+- deploy.yml 触发改 workflow_dispatch：原 push 自动部署与 npm run push 双链路并存，且其生成的 .env 模板（PORT=2174、FEISHU_USE_LONG_CONNECTION=true、缺 TICKET_*/P2P_* 等键）会覆盖 push 上传的正确配置，属生产隐患。
+- eventSubscription：p2p 消息处理完显式 return（原先落到群聊管道再次调用 chatService，靠消息去重副作用短路，日志连打两条干扰排障）。
+- /test-ddl 补齐「未结单工单分栏」与「意外暂停项目」区块（与正式播报同数据源、同降级链路），部分失败补发卡与正式卡等价；widget 测试播报对「今日已播报过」如实提示（原弹「已发送」假成功）；/status 网关模式下事件接入不再显示 ❌；/help 补 /approval-* 财务指令说明。
+- requestAPI 加 15s 超时与非 JSON 响应可读报错（原 fetch 无超时可无限挂起，网关错误页会以 SyntaxError 掩盖真实错误）。
+- 文档对齐：README/LOGIC-MAP 关键词监听描述改为「记录全部发言」（v23 起现状，keywords.json 仅展示兼容）、问询走私聊（v51 起）、waiting 联动 ticket-bot 播报的过时描述删除、API 表/env 模板补全（TICKET_* 两键、MEETING_CHAT_IDS 不生效标注）；widget KeywordTracker 文案同步。
+- 版本线备注：v48~v53 期间条目未及时入档，版本号以 git 提交消息为准（b0a3608=v53），本条起恢复逐 push 记录。

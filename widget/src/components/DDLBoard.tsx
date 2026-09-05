@@ -27,8 +27,13 @@ const DDLBoard: React.FC = () => {
   const handleTestBroadcast = async () => {
     setTesting(true);
     try {
-      await botApi.testBroadcast();
-      alert('测试播报已发送');
+      const data = await botApi.testBroadcast();
+      // 今日已播报过时后端返回 skipped=true：如实提示，不弹「已发送」假成功
+      if (data && data.skipped) {
+        alert(data.message || '今日已播报过，未重复发送');
+      } else {
+        alert('测试播报已发送');
+      }
     } catch (err) {
       console.error('测试播报失败:', err);
       alert('测试播报失败，请检查后端服务');

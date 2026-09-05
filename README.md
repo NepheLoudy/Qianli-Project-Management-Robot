@@ -9,7 +9,7 @@
 - 支持分组（category）
 - 支持父子层级结构（parentId）
 - 优先级：high（高）/ medium（中）/ low（低）
-- 状态：pending（待开始）/ in_progress（进行中）/ waiting（等待中）/ completed（已完成）
+- 状态：pending（意外暂停）/ in_progress（进行中）/ waiting（待认领）/ completed（已完成）/ died（已截止）
 - DDL 倒计时显示，临近 DDL 高亮提醒
 
 ### 2. 群机器人 DDL 播报（4 群分组）
@@ -28,22 +28,22 @@
 - 按时间倒序显示日志列表
 - 存储在飞书多维表格的「维护日志」表中
 
-### 4. 群聊关键词监听
-- 监听指定群聊中带关键词的内容（如 #英雄、#实验 等）
-- 关键词可通过配置文件修改
-- 父子层级结构：每个关键词作为父记录，匹配的消息作为子记录关联
-- 自动记录到多维表格：时间、发送人、组别、消息内容、图片、消息链接
+### 4. 群聊发言记录（原关键词监听）
+- 监听指定群聊（`KEYWORD_CHAT_ID`）的**全部消息**（自 v23 起不再按关键词过滤，父记录固定为「全部发言」；`keywords.json` 与 `/keywords` 指令仅作展示兼容）
+- 记录到多维表格：时间、发送人、组别（全部发言）、消息内容、图片
 - 前端可按分组折叠/展开查看
+- 注意：群里 @机器人的消息走对话链路，不会被本功能记录
 
 ### 5. 机器人对话功能
 - @机器人激活对话（群聊），私聊直接响应
 - 支持指令系统：
   - `/help` — 显示帮助信息
   - `/status` — 查看服务运行状态
-  - `/test-ddl` — 手动触发 DDL 播报测试
-  - `/keywords` — 查看当前监听关键词
+  - `/test-ddl` — 手动触发 DDL 播报测试（与正式播报同内容，可作部分失败后的补发）
+  - `/keywords` — 查看关键词配置（仅展示）
   - `/history` — 查看近期播报历史
-  - `/print-*` — 3D 打印指令转发
+  - `/print-*` — 3D 打印指令转发（bambu）
+  - `/approval-*` — 财务指令转发（approval-bot；审批群内指令整体切换为财务）
 - 消息去重机制，防止重复处理
 - 事件由 feishu-gateway（本机唯一长连接）转发到 `/api/feishu/event`，本服务 `FEISHU_USE_LONG_CONNECTION=false`
 
@@ -52,7 +52,7 @@
 - 引导用户回复「是」或「否」确认项目是否已完成
 - 回复「是」自动将项目状态更新为 completed
 - @提及文本通过富文本（post）渲染，确保正常显示无乱码
-- **群聊问询隔离**：在哪个播报群发起的问询，仅在该群监听回复，避免串群
+- **问询走私聊**：DDL 播报后向 owner 私聊发确认消息，回复也在私聊里识别（v51 起群聊问询已下线）
 - 待确认记录 7 天自动过期清理
 
 ### 7. 每日随机语录
@@ -106,7 +106,7 @@ project-management-robot/
 │   ├── package.json
 │   └── .env.example
 ├── push.js                       # 一键部署脚本（Git + NAS）
-├── deploy.js                     # NAS 部署脚本
+├── auto-deploy.js                # GitHub Actions 时代旧部署脚本（已不用，仅存档）
 └── README.md
 ```
 
@@ -153,7 +153,7 @@ project-management-robot/
 | 状态 | 含义 | 播报规则 |
 |------|------|----------|
 | in_progress | 进行中 | 正常参与 DDL 播报（逾期/紧急/本周） |
-| waiting | 还没有人做 | 参与 DDL 播报并标注「⏳待认领」；每日播报节点同时联动 ticket-bot 触发一次「无人接单工单」汇总播报 |
+| waiting | 还没有人做 | 参与 DDL 播报并标注「⏳待认领」 |
 | pending | 出现意外暂停 | 不进 DDL 分类，在卡片「⏸️ 意外暂停项目」区块单独说明（只列名字不 @） |
 | died | 项目已截止 | 不播报，不再管理 |
 | completed | 已完成 | 不播报 |
@@ -178,14 +178,14 @@ project-management-robot/
 
 | 字段名 | 字段类型 | 说明 |
 |--------|----------|------|
-| 组别 | 文本 | 关键词分组（去掉 # 前缀） |
+| 组别 | 文本 | 恒为「全部发言」（v23 起记录群内全部消息，不再按关键词分组） |
 | 时间 | 日期时间 | 消息发送时间（子记录） |
 | 发送人 | 人员 | 发送人（子记录） |
 | 消息内容 | 长文本 | 消息完整文本 |
 | 图片 | 附件 | 消息图片（子记录） |
-| 消息链接 | 超链接 | 原消息链接（子记录） |
-| 消息ID | 文本 | 去重用（可选） |
-| 群聊ID | 文本 | 群聊 ID（可选） |
+| 消息链接 | 超链接 | 原消息链接（表内可建列，服务端暂不写入） |
+| 消息ID | 文本 | 表内可建列，服务端暂不写入 |
+| 群聊ID | 文本 | 表内可建列，服务端暂不写入 |
 | parentId | 关联 | 父记录 ID（关联本表自身） |
 
 **表4：每日语录（表ID: tbl_quote）**
@@ -237,10 +237,10 @@ SJ_CHAT_ID=sj组群聊ID
 XY_WEBHOOK_URL=xy组机器人webhook
 XY_CHAT_ID=xy组群聊ID
 
-# 关键词监听群聊 ID
+# 关键词监听群聊 ID（该群的全部发言会被记录）
 KEYWORD_CHAT_ID=
 
-# 会议提醒监控群（留空则监听机器人所在所有群）
+# 会议提醒监控群（已不生效：当前实现监听所有群）
 MEETING_CHAT_IDS=
 
 # 服务器
@@ -251,6 +251,20 @@ CRON_SCHEDULE=0 0 12 * * *
 
 # DDL 预警天数
 DDL_ALERT_DAYS=2
+
+# 3D 打印服务（/print-* 转发目标）
+PRINT_SERVER_URL=http://localhost:3001
+
+# 审批群（群内指令整体切换为 /approval-*，转发 approval-bot）
+APPROVAL_CHAT_ID=
+APPROVAL_SERVICE_URL=http://localhost:3002
+
+# ticket-bot（DDL 卡「未结单工单」按组分栏取数）
+TICKET_BOT_URL=http://localhost:3003
+
+# 私聊指令白名单（留空 = 私聊指令对所有人关闭，fail-closed）
+P2P_COMMAND_OPEN_IDS=
+P2P_COMMAND_CHAT_IDS=
 ```
 
 3. 启动服务：
@@ -268,16 +282,9 @@ npm start
 
 > 不要再让本服务自己开长连接：共用应用的多条长连接会被飞书**随机分发**事件，导致指令时灵时不灵。HTTP 回调模式（公网 HTTPS 直连）仍可用：设置 `FEISHU_USE_LONG_CONNECTION=false` 并配置 `FEISHU_VERIFICATION_TOKEN` / `FEISHU_ENCRYPT_KEY`。
 
-### 五、配置关键词监听
+### 五、配置发言记录
 
-编辑 `server/src/config/keywords.json`：
-
-```json
-{
-  "enabled": true,
-  "keywords": ["#英雄", "#实验", "#分享", "#讨论"]
-}
-```
+编辑 `server/src/config/keywords.json`：`enabled` 控制记录开关。自 v23 起记录目标群的**全部发言**（父记录固定「全部发言」），`keywords` 数组仅保留展示兼容，不再参与过滤。
 
 ### 六、配置群机器人
 
@@ -295,6 +302,10 @@ npm install
 npm start        # 本地调试
 npm run upload   # 上传发布
 ```
+
+> **注意**：小组件的 API 地址是构建期内联常量（`src/api.ts` 的 `API_BASE`，webpack 注入），
+> 默认 `http://localhost:3000/api`。小组件在用户浏览器的飞书文档内嵌页里运行，
+> 发布前必须把 `API_BASE` 改成用户可达的地址（并注意 HTTPS 页面调 HTTP 接口的 mixed-content 限制）。
 
 ## 一键部署（Git + NAS）
 
@@ -321,8 +332,16 @@ node push.js "提交说明"
 ### 机器人
 | 接口 | 方法 | 说明 |
 |------|------|------|
-| `/api/bot/test-broadcast` | POST | 测试 DDL 播报 |
+| `/api/health` | GET | 健康检查 |
+| `/api/bot/test-broadcast` | POST | 测试 DDL 播报（今日已播报过时返回 `skipped:true` 不重复发送） |
 | `/api/bot/history` | GET | 获取播报历史 |
+| `/api/bot/cron-status` | GET | 定时任务状态 |
+
+### 关键词/发言记录
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/api/keywords/config` | GET | 查看记录配置 |
+| `/api/keywords/records` | GET | 获取记录列表（支持层级） |
 
 ### 维护日志
 | 接口 | 方法 | 说明 |
