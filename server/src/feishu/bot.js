@@ -180,7 +180,7 @@ function countQualifiedNodes(nodes) {
   return count;
 }
 
-function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote, mentionField = 'owner', pausedProjects = [], ticketBuckets = { urgent: [], week: [] }) {
+function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote, mentionField = 'owner', pausedProjects = [], ticketBuckets = { urgent: [], week: [], unclaimed: [] }) {
   const elements = [];
 
   elements.push({
@@ -238,6 +238,25 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
         content: lines.join('\n'),
       });
     });
+  }
+
+  // ticket-bot 联动：无人接单工单分栏（触发节点滞留超 6h 无人接单；只列标题不 @，
+  // 群内问询与组长私聊升级由 ticket-bot 超时检查承担）
+  const unclaimedCount = (ticketBuckets.unclaimed || []).length;
+  if (unclaimedCount > 0) {
+    elements.push({ tag: 'hr' });
+    elements.push({
+      tag: 'markdown',
+      content: `**🆘 无人接单工单（超6小时无人响应，${unclaimedCount}个）**`,
+    });
+    const lines = ticketBuckets.unclaimed.map(t => {
+      const when = t.elapsedHours >= 24
+        ? `🔴 已发布 ${Math.floor(t.elapsedHours / 24)} 天无人接单`
+        : `🟠 已发布 ${t.elapsedHours} 小时无人接单`;
+      const groups = t.groups && t.groups.length ? `（${t.groups.join('、')}）` : '';
+      return `🆘 ${groups}**${t.title}** - ${when}`;
+    });
+    elements.push({ tag: 'markdown', content: lines.join('\n') });
   }
 
   // ticket-bot 联动：未结单工单按理想结单时间分栏（只列处理人名字不 @，结单提醒由 ticket-bot 私聊完成）
@@ -318,7 +337,7 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
 }
 
 async function sendDDLReport(overdueProjects, urgentProjects, weekProjects, quote, options = {}) {
-  const { webhookUrl, mentionField = 'owner', pausedProjects = [], ticketBuckets = { urgent: [], week: [] } } = options;
+  const { webhookUrl, mentionField = 'owner', pausedProjects = [], ticketBuckets = { urgent: [], week: [], unclaimed: [] } } = options;
   const card = buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote, mentionField, pausedProjects, ticketBuckets);
   return sendMessage(card, webhookUrl);
 }

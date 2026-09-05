@@ -173,7 +173,7 @@ async function handleTestDDLCommand(chatCtx, chatType) {
 
     // 与正式播报取同一份「未结单工单」分栏数据（分组失败降级共用，再失败不含分栏），
     // 保证 /test-ddl 补发卡与正式卡等价（否则补出来的卡缺工单分栏与意外暂停区块）
-    let ticketBuckets = { urgent: [], week: [] };
+    let ticketBuckets = { urgent: [], week: [], unclaimed: [] };
     let groupedTickets = null;
     try {
       groupedTickets = await ticketCloseService.getGroupedBuckets();

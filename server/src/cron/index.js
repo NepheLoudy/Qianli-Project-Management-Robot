@@ -6,6 +6,7 @@ const { sendDDLReport, getRandomQuote } = require('../feishu/bot');
 const ddlConfirmService = require('../services/ddlConfirmService');
 const ticketCloseService = require('../services/ticketCloseService');
 const config = require('../config');
+const quietHours = require('../utils/quietHours');
 
 const broadcastHistory = [];
 
@@ -86,17 +87,17 @@ async function runDDLBroadcast() {
       // 未结单工单：优先按「负责人所属组别」分组（ticket-bot 计算，各组只看到自己的工单，
       // 播报对象为指定负责人/补充负责人）；分组数据失败时降级为全群共用同一份（不分组），
       // 仍失败则本次不含工单分栏，均不影响 DDL 播报本身
-      let ticketBuckets = { urgent: [], week: [] };
+      let ticketBuckets = { urgent: [], week: [], unclaimed: [] };
       let groupedTickets = null;
       try {
         groupedTickets = await ticketCloseService.getGroupedBuckets();
-        const total = Object.values(groupedTickets).reduce((n, b) => n + b.urgent.length + b.week.length, 0);
+        const total = Object.values(groupedTickets).reduce((n, b) => n + b.urgent.length + b.week.length + (b.unclaimed || []).length, 0);
         console.log(`[DDL播报] 未结单工单(按组分桶): 群数=${Object.keys(groupedTickets).length} 工单数=${total}`);
       } catch (err) {
         console.warn(`[DDL播报] 按组工单读取失败，降级为全群同一份: ${err.message}`);
         try {
           ticketBuckets = await ticketCloseService.getUnclosedBuckets();
-          console.log(`[DDL播报] 未结单工单: 2日内加急:${ticketBuckets.urgent.length} 7日内:${ticketBuckets.week.length}`);
+          console.log(`[DDL播报] 未结单工单: 2日内加急:${ticketBuckets.urgent.length} 7日内:${ticketBuckets.week.length} 无人接单:${(ticketBuckets.unclaimed || []).length}`);
         } catch (err2) {
           console.warn(`[DDL播报] 未结单工单读取失败（本次播报不含工单分栏）: ${err2.message}`);
         }
@@ -239,7 +240,9 @@ function startCronJobs() {
 
   ddlTask = cron.schedule(config.cron.schedule, () => {
     console.log('[定时任务] 触发DDL播报');
-    runDDLBroadcast().catch(err => {
+    // 晚间静默：触发落在播报静默窗口（默认 02:00–09:00）内时登记积压，
+    // 窗口结束整点重跑整个播报任务（含逾期确认私聊，以补发时刻数据重查）
+    quietHours.gateTask('ddl_broadcast', quietHours.shanghaiStamp(), runDDLBroadcast, 'DDL播报').catch(err => {
       console.error('[定时任务] DDL播报失败:', err.message);
     });
   }, {
@@ -249,6 +252,10 @@ function startCronJobs() {
   console.log(`[定时任务] DDL播报已启动，调度规则: ${config.cron.schedule} (Asia/Shanghai)`);
   console.log(`[定时任务] 当前时间: ${new Date().toLocaleString('zh-CN')}`);
   console.log(`[定时任务] 下次执行时间: ${getNextExecutionTime(config.cron.schedule)}`);
+
+  // 晚间静默：注册积压任务的冲刷执行器，并按启动时点调度积压补跑（有积压才调度）
+  quietHours.registerTask('ddl_broadcast', runDDLBroadcast);
+  quietHours.initQuietHoursFlush();
 
   return { ddlTask };
 }
@@ -278,6 +285,7 @@ function getCronStatus() {
     running: !!ddlTask,
     schedule: config.cron.schedule,
     nextExecution: getNextExecutionTime(config.cron.schedule),
+    quietHours: quietHours.getStatus(),
   };
 }
 

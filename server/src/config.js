@@ -89,10 +89,15 @@ module.exports = {
     approvalField: process.env.TICKET_APPROVAL_FIELD || '审批节点',
     // 未审批的最后一层节点（处于该节点 = 工作已交付但尚未结单）
     closeValue: process.env.TICKET_CLOSE_VALUE || '回执单：是否结单',
+    // 无人接单分栏的触发节点值（逗号分隔，与 ticket-bot APPROVAL_NODE_ACCEPT_VALUE 对齐）
+    acceptValues: (process.env.TICKET_ACCEPT_VALUES || '群内有组员接单后通过,有组员接单后通过,负责人确认消息后通过')
+      .split(',').map(s => s.trim()).filter(Boolean),
     deadlineField: process.env.TICKET_DEADLINE_FIELD || '理想结单时间',
     // 降级直读链路的播报对象字段（与 ticket-bot unclosedService 口径一致：指定 → 补充）
     assigneeField: process.env.TICKET_ASSIGNEE_FIELD || '指定负责人',
     supplementField: process.env.TICKET_SUPPLEMENT_FIELD || '补充负责人',
+    // 无人接单分桶的组别字段（与 ticket-bot ROUTE_FIELD 对齐；降级链路只按它直出，不解析人员）
+    routeField: process.env.TICKET_ROUTE_FIELD || '面向组别',
   },
   // 指令仅群内触发；私聊指令仅白名单内可用（open_id / p2p chat_id 任一命中即可）。
   // 两个列表都留空 = 所有人（含管理员）私聊指令均关闭，fail-closed。

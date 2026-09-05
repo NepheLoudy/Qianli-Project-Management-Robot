@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v53**（2026-09-05）。
+当前最新：**v56**（2026-09-06，随本提交落地）。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -221,3 +221,22 @@
 - requestAPI 加 15s 超时与非 JSON 响应可读报错（原 fetch 无超时可无限挂起，网关错误页会以 SyntaxError 掩盖真实错误）。
 - 文档对齐：README/LOGIC-MAP 关键词监听描述改为「记录全部发言」（v23 起现状，keywords.json 仅展示兼容）、问询走私聊（v51 起）、waiting 联动 ticket-bot 播报的过时描述删除、API 表/env 模板补全（TICKET_* 两键、MEETING_CHAT_IDS 不生效标注）；widget KeywordTracker 文案同步。
 - 版本线备注：v48~v53 期间条目未及时入档，版本号以 git 提交消息为准（b0a3608=v53），本条起恢复逐 push 记录。
+
+## 阶段八 · 晚间静默——播报时段限制（2026-09-06）
+
+### v55 · 2026-09-06 · 随本提交落地 · feat
+**02:00–09:00（Asia/Shanghai）静默窗口：DDL 播报（含逾期确认私聊）积压到 09:00 统一补跑（可配可关）**
+- 新增 `server/src/utils/quietHours.js`（顶层 AGENTS.md「晚间静默」规则的本仓实现）：DDL 每日播报 cron 触发落在窗口（`QUIET_HOURS_START/END` 默认 2→9，支持跨午夜写法，`QUIET_HOURS_DISABLED=1` 关闭）内时登记积压（`.quiet-backlog.json` 持久化，重启不丢），窗口结束整点重跑整个 `runDDLBroadcast`——以补发时刻的项目/工单数据重查并逐群重播，逾期确认私聊（同一任务流后续步骤）一并顺延；启动时过点立即补冲刷，冲刷失败保留重试 ≤3 次。
+- 「今日已播报」标记本就在至少一群送达后才落盘，冲刷补跑与当天正常触发天然互斥（补跑成功即标记，当天正点触发自动跳过）。
+- 现状默认调度 12:00 不在窗口内，本改动为规则兜底：调度改进窗口或积压跨重启时自动生效。
+- 豁免：`/test-ddl`、`/test-broadcast` 人工触发与对话/指令回复（DDL 确认"是/否"）不受限；`getCronStatus` 附 `quietHours` 状态。
+- 文档：ticket-pm/LOGIC-MAP.md §2.2 补第 6 条；顶层 AGENTS.md 新增「晚间静默」规则段。
+
+## 阶段九 · DDL 卡「无人接单」分栏（2026-09-06）
+
+### v56 · 2026-09-06 · 随本提交落地 · feat
+**DDL 播报新增「无人接单工单」分栏（取数 ticket-bot unclosed API 新增 unclaimed 桶；v55 晚间静默同批上线）**
+- `server/src/feishu/bot.js`：`buildDDLReportCard` 在结单分栏前新增「🆘 无人接单工单（超6小时无人响应）」——只列标题与已发布时长（≥24h 按天、否则按小时）不 @（群内问询/组长私聊升级由 ticket-bot 超时检查承担），降级链路的工单附带组别名；`sendDDLReport` 默认桶补 `unclaimed: []`，旧结构无该键按空处理（渲染处 `|| []` 兜底）。
+- `server/src/cron/index.js`、`chatService.js`（/test-ddl）：分栏数据初始化与汇总日志补 `unclaimed`；主链路按群分组、降级链路全群共用，行为与结单分栏一致。
+- `server/src/services/ticketCloseService.js` 降级直读链路补同款无人接单分桶（触发节点拆段匹配 + 补充负责人为空 + 距发起 ≥6h，口径与 ticket-bot unclosedService 对齐）；顺带把服务端等值过滤改全量拉取 + 本地拆段匹配（「；」拼接节点值等值过滤静默漏桶，与 ticket-bot v50/v52 同款整改）；`config.js` 新增 `TICKET_ACCEPT_VALUES`/`TICKET_ROUTE_FIELD`（默认值即用，NAS .env 无需必配）。
+- 联动部署顺序：ticket-bot v52 先上（API 提供方），本仓 v56 随后。
