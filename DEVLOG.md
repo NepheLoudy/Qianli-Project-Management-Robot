@@ -2,7 +2,23 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../AGENTS.md)）。
 
-当前最新：**v47**（2026-09-03 `a39f982`）。未发布：`server/.env.example` 本地有改动未提交。
+当前最新：**v48**（2026-09-04 `b57fae5`）。
+
+## 阶段九 · 指令边界收紧（2026-09-05）
+
+### v49 · 2026-09-05 · docs（随本提交落地，无独立哈希） · feat
+**指令仅群内触发；私聊指令仅管理员白名单可用（对话枢纽统一门禁）**
+- `server/src/services/chatService.js`：私聊（p2p）收到 / 指令时先过白名单（`P2P_COMMAND_OPEN_IDS`/`P2P_COMMAND_CHAT_IDS`，sender open_id 与 p2p chat_id 任一命中），未命中回复「指令仅支持在群聊中 @机器人 使用」；群聊照旧（@机器人门禁 + 回复到来源群）；私聊普通对话不受限。
+- `server/src/config.js` 新增 `p2pCommandAllow` 白名单配置；`.env.example` 补充说明；本地 .env 已配置管理员 open_id（张国皓 ou_249993fe…，经 git 提交邮箱手机号反查飞书账号确认）。
+- /approval-* 与 /print-* 指令由此在转发前统一收口，approval-bot / bambu 的 `/api/chat/command` 契约不变。
+- 同批补交 v48 建档条目（昨日「当前最新」头部与阶段七段落遗留未提交）。
+
+## 阶段七 · 开发历史建档（2026-09-04）
+
+### v48 · 2026-09-04 · `b57fae5` · docs
+**新增 DEVLOG 开发历史 v1~v47（按 push 回溯建档）；.env.example BOT_NAME 示例修正为爆米花机-对话型**
+- 本 DEVLOG 诞生：v1~v47 按提交历史回溯编号，此后每次 push 追加一版（规则见顶层 AGENTS.md「开发日志（DEVLOG）」节）；
+- `server/.env.example` 的 BOT_NAME 示例从「爆米花机_财务型」修正为真实对话型机器人名（与 approval-bot v10 同源修正）。
 
 ## 阶段一 · 立项与 CI/部署链路（2026-07-09 ~ 07-10）
 

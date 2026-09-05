@@ -64,6 +64,18 @@ function isApprovalGroup(chatId) {
 }
 
 /**
+ * 私聊指令白名单：指令仅群内触发，私聊指令仅白名单账号/会话可用
+ * （sender open_id 与 p2p chat_id 任一命中即可，见 config.p2pCommandAllow）
+ */
+function isP2pCommandAllowed(senderId, chatId) {
+  const allow = config.p2pCommandAllow;
+  return (
+    (!!senderId && allow.openIds.includes(senderId)) ||
+    (!!chatId && allow.chatIds.includes(chatId))
+  );
+}
+
+/**
  * 转发 /approval-* 指令到 approval-bot（bambu 打印服务同款转发契约）
  */
 async function handleApprovalCommand(command, args) {
@@ -300,7 +312,11 @@ async function processChatMessage(event) {
 
   const cmd = parseCommand(text);
   if (cmd) {
-    if (isApproval) {
+    if (!isGroup && !isP2pCommandAllowed(senderId, message.chat_id)) {
+      // 铁律：指令只在群里触发并回复到对应群；私聊指令仅白名单账号（管理员）可用
+      console.log('[对话服务] 拒绝私聊指令:', cmd.command, 'sender:', senderId || '未知', 'chat_id:', message.chat_id);
+      replyText = '⚠️ 指令仅支持在群聊中 @机器人 使用，私聊指令暂未开放';
+    } else if (isApproval) {
       // 审批群：指令能力整体切换为财务相关，仅放行 /help 与 /approval-*
       console.log('[对话服务] 审批群指令:', cmd.command, '参数:', cmd.args);
       if (cmd.command === '/help') {
@@ -358,4 +374,5 @@ module.exports = {
   processChatMessage,
   isMentionedBot,
   parseCommand,
+  isP2pCommandAllowed,
 };

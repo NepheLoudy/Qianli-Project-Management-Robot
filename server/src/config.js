@@ -91,6 +91,12 @@ module.exports = {
     closeValue: process.env.TICKET_CLOSE_VALUE || '回执单：是否结单',
     deadlineField: process.env.TICKET_DEADLINE_FIELD || '理想结单时间',
   },
+  // 指令仅群内触发；私聊指令仅白名单内可用（open_id / p2p chat_id 任一命中即可）。
+  // 两个列表都留空 = 所有人（含管理员）私聊指令均关闭，fail-closed。
+  p2pCommandAllow: {
+    openIds: (process.env.P2P_COMMAND_OPEN_IDS || '').split(',').map(s => s.trim()).filter(Boolean),
+    chatIds: (process.env.P2P_COMMAND_CHAT_IDS || '').split(',').map(s => s.trim()).filter(Boolean),
+  },
   broadcastGroups,
 };
 
