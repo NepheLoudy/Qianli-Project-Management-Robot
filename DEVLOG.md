@@ -2,7 +2,15 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../AGENTS.md)）。
 
-当前最新：**v48**（2026-09-04 `b57fae5`）。
+当前最新：**v51**（2026-09-05）。
+
+## 阶段十 · 私聊失败群聊降级移除（2026-09-05）
+
+### v51 · 2026-09-05 · fix（随本提交落地，无独立哈希）
+**DDL 逾期确认移除"私聊不成→群聊 @ 降级"链路**
+- 实测确认机器人可直达所有在册员工私聊（无需先建联），230013 仅出现在离队/未激活账号，群聊降级失去存在场景。
+- `server/src/services/ddlConfirmService.js`：删除 `sendOverdueConfirmation` 的 230013→`sendTextToChat` 群聊降级分支及配套 `groupText`/`getOwnerGroup` 调用；230013 改为安静失败日志（疑离队/未激活）。私聊成功路径与 `sentMode: 'p2p'` 回复匹配不变。
+- 保留（无害残留）：`handleReply` 的 group 分支与 `config.getOwnerGroup`——降级不再产生 `sentMode: 'group'` 记录后自动失效，未删以减少对 hub 管道的触碰面。
 
 ## 阶段九 · 指令边界收紧（2026-09-05）
 

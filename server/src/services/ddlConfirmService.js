@@ -51,20 +51,6 @@ async function sendOverdueConfirmation(project) {
     `• 回复 "否" - 状态保持不变，继续提醒`,
   ].join('\n');
 
-  const groupText = [
-    `⚠️ ${buildAtTag(ownerOpenId, ownerName)} 项目逾期提醒`,
-    ``,
-    `你负责的项目「${project.name}」已逾期 ${overdueDays} 天，请及时处理。`,
-    `组别：${project.category || '其他'} | 截止日期：${project.ddl}`,
-    ``,
-    `请在群内回复 "是" 或 "否" 确认项目状态：`,
-    `• 回复 "是" → 我会帮你标记为已完成`,
-    `• 回复 "否" → 状态保持不变，继续提醒`,
-  ].join('\n');
-
-  const ownerGroup = config.getOwnerGroup();
-  const chatId = ownerGroup?.chatId || '';
-
   try {
     await bot.sendTextToUser(ownerOpenId, p2pText);
     console.log(`[DDL确认] 已向 ${ownerName}(${ownerOpenId}) 发送项目 "${project.name}" 的确认请求（私聊）`);
@@ -83,30 +69,8 @@ async function sendOverdueConfirmation(project) {
   } catch (err) {
     const errMsg = err.message || '';
     if (errMsg.includes('230013')) {
-      console.warn(`[DDL确认] 机器人对用户 ${ownerName}(${ownerOpenId}) 没有可用性，降级到群聊 @提醒`);
-      if (!chatId) {
-        console.error('[DDL确认] 未配置群聊 ID，无法降级发送');
-        return { sent: false, reason: '未配置群聊 ID' };
-      }
-      try {
-        await bot.sendTextToChat(chatId, groupText);
-        console.log(`[DDL确认] 已在群聊 ${chatId} 中 @${ownerName} 发送项目 "${project.name}" 的确认请求（群聊降级）`);
-
-        existing.push({
-          projectId: project.id,
-          projectName: project.name,
-          ownerName,
-          ownerOpenId,
-          sentAt: Date.now(),
-          sentMode: 'group',
-          chatId, // 记录发送问询的群聊 ID，回复时需匹配
-        });
-        pendingConfirmations.set(ownerOpenId, existing);
-        return { sent: true, mode: 'group' };
-      } catch (groupErr) {
-        console.error(`[DDL确认] 群聊发送也失败 (${project.name}):`, groupErr.message);
-        return { sent: false, reason: `私聊失败+群聊失败: ${groupErr.message}` };
-      }
+      // 机器人已可直达所有在册员工，230013 仅出现在离队/未激活账号，安静失败即可，不再群聊降级
+      console.error(`[DDL确认] 用户 ${ownerName}(${ownerOpenId}) 不可用（230013，疑离队/未激活），跳过`);
     } else if (errMsg.includes('230053')) {
       console.error(`[DDL确认] 用户 ${ownerName}(${ownerOpenId}) 已设置不再接收机器人消息，跳过`);
     } else if (errMsg.includes('230002')) {
