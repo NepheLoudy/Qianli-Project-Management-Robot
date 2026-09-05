@@ -86,8 +86,14 @@ async function getUnclosedBuckets() {
  *
  * @returns {Promise<Object<{urgent: Array, week: Array}>>} 以群 chatId 为键
  */
+// ticket-bot 假死（端口存活但不响应）时快速超时走降级，不拖住正午播报；
+// 10s 为冷缓存余量（分组接口会对无 USER_GROUPS 映射的负责人逐人查通讯录部门）
+const GROUPED_FETCH_TIMEOUT_MS = 10 * 1000;
+
 async function getGroupedBuckets() {
-  const res = await fetch(`${config.ticketBot.url}/api/tickets/unclosed-by-group`);
+  const res = await fetch(`${config.ticketBot.url}/api/tickets/unclosed-by-group`, {
+    signal: AbortSignal.timeout(GROUPED_FETCH_TIMEOUT_MS),
+  });
   if (!res.ok) throw new Error(`ticket-bot API HTTP ${res.status}`);
   const data = await res.json();
   return data.result || {};
