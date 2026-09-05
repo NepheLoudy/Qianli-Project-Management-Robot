@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v56**（2026-09-06，随本提交落地）。
+当前最新：**v57**（2026-09-06，随本提交落地）。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -240,3 +240,13 @@
 - `server/src/cron/index.js`、`chatService.js`（/test-ddl）：分栏数据初始化与汇总日志补 `unclaimed`；主链路按群分组、降级链路全群共用，行为与结单分栏一致。
 - `server/src/services/ticketCloseService.js` 降级直读链路补同款无人接单分桶（触发节点拆段匹配 + 补充负责人为空 + 距发起 ≥6h，口径与 ticket-bot unclosedService 对齐）；顺带把服务端等值过滤改全量拉取 + 本地拆段匹配（「；」拼接节点值等值过滤静默漏桶，与 ticket-bot v50/v52 同款整改）；`config.js` 新增 `TICKET_ACCEPT_VALUES`/`TICKET_ROUTE_FIELD`（默认值即用，NAS .env 无需必配）。
 - 联动部署顺序：ticket-bot v52 先上（API 提供方），本仓 v56 随后。
+
+## 阶段十 · 例行维护纠偏（2026-09-06）
+
+### v57 · 2026-09-06 · 随本提交落地 · fix
+**全仓例行 debug 扫描——降级直读链路拆段分隔符与 ticket-bot 对齐 + README/文案对齐**
+- `ticketCloseService.matchNodeAny` 拆段分隔符原为 `/[；;、]/`，比 ticket-bot `config.splitNodeValues`（`;；,，、|`）少 `,` `，` `|` 三种：节点值若以这三者拼接，主链路（API）命中而降级直读链路整串匹配不上、分栏静默漏桶——补齐字符类（LOGIC-MAP §5#9「两边降级直读链路口径必须一致」契约）。
+- README：ticket-bot 联动段从「直接读源表」改写为 v45 后实际链路（主链路 unclosed-by-group API + 降级直读 + 双层降级），补 🆘 无人接单分栏（v56）与晚间静默说明（v55）；§结构树补 `ticketCloseService.js` 与 `utils/quietHours.js`。
+- `server/.env.example` 补 `TICKET_ACCEPT_VALUES` / `TICKET_ROUTE_FIELD`（config.js 已读取、有默认值，此前清单缺漏）。
+- 文案纠偏：`keywords.json` description 与 `/keywords` 指令提示去掉过时的「#标签触发」「需重启生效」说法（v23 起发言全量记录、loadKeywordsConfig 每次调用重读即改即生效）；widget 端 KeywordTracker 同款文案未随批改（需重新构建上传小组件，下次一并）。
+- 已知边界（意图不明，未动）：API 成功路径下未命中 GROUP_ROUTES 的群回落空桶（降级路径却共用全群桶）；静默冲刷进行中新登记积压的调度窗口可能排到下一个 end 整点；`QUIET_HOURS_DISABLED=1` 时遗留积压不冲刷不清理（四仓同款行为，保持一致）。

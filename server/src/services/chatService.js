@@ -218,7 +218,7 @@ async function handleKeywordsCommand() {
   });
   
   lines.push('');
-  lines.push('提示：修改 server/src/config/keywords.json 后需重启服务生效');
+  lines.push('提示：修改 server/src/config/keywords.json 后即时生效（无需重启）；v23 起发言全量记录，列表仅作展示兼容');
   
   return lines.join('\n');
 }

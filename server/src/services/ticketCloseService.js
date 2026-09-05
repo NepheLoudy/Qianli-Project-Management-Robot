@@ -29,9 +29,10 @@ function getCreatedMs(fields) {
   return Number.isFinite(ms) && ms > 0 ? ms : 0;
 }
 
-// 审批节点拆段匹配：并行分支会把多个节点名以「；」拼接写入同一字段（与 ticket-bot matchNodeValue 同口径）
+// 审批节点拆段匹配：并行分支会把多个节点名以「;；,，、|」等分隔符拼接写入同一字段
+// （与 ticket-bot config.splitNodeValues 同字符类同口径）
 function matchNodeAny(nodeValue, values) {
-  const parts = String(nodeValue || '').split(/[；;、]/).map((s) => s.trim()).filter(Boolean);
+  const parts = String(nodeValue || '').split(/[;；,，、|]/).map((s) => s.trim()).filter(Boolean);
   return values.some((v) => parts.includes(v));
 }
 

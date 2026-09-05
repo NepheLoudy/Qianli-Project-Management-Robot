@@ -98,9 +98,12 @@ project-management-robot/
 │   │   │   ├── keywordService.js    # 关键词监听服务
 │   │   │   ├── chatService.js       # 对话 / 指令服务
 │   │   │   ├── ddlConfirmService.js # 逾期确认服务
+│   │   │   ├── ticketCloseService.js # 工单分栏取数（主链路 API + 降级直读）
 │   │   │   └── meetingReminderService.js # 会议卡片提醒
 │   │   ├── cron/
 │   │   │   └── index.js             # 定时任务
+│   │   ├── utils/
+│   │   │   └── quietHours.js        # 晚间静默闸门（播报积压补跑）
 │   │   ├── config.js                # 配置（4 群播报）
 │   │   └── index.js                 # 入口
 │   ├── package.json
@@ -159,12 +162,15 @@ project-management-robot/
 | completed | 已完成 | 不播报 |
 | ddl 未填写 | —— | 不参与 DDL 播报（暂停 pending 项目除外，其单独说明区块不看 DDL） |
 
-**ticket-bot 工单联动（未结单播报）**：每日 DDL 播报卡片还包含工单分栏。直接读取 ticket-bot 的工单源表（同一多维表格 base），对齐其结单提醒分支逻辑：审批节点处于未审批的最后一层「回执单：是否结单」且当前处理人有值（无论公开质询接单还是指定负责人），即视为工作已交付但未结单。按「理想结单时间」分两个区块：
+**ticket-bot 工单联动（未结单播报）**：每日 DDL 播报卡片还包含工单分栏。取数主链路调 ticket-bot `GET /api/tickets/unclosed-by-group`（10s 超时），按群取各负责人分桶（各组只看到自己负责人的工单）；API 失败自动降级直读工单源表（同一多维表格 base，口径与主链路对齐：指定负责人→补充负责人、节点值拆段匹配），再失败才降级为不带工单分栏，均不影响 DDL 播报本身。分栏口径与 ticket-bot unclosedService 对齐：
 
-- 🎫 **工单结单加急（2日内）**：理想结单时间在 2 日内，已超期的标注超期天数
+- 🎫 **工单结单加急（2日内）**：理想结单时间在 2 日内，已超期的标注超期天数（节点处于未审批的最后一层「回执单：是否结单」= 工作已交付但未结单）
 - 🎫 **工单7日内待结单**：理想结单时间在 2 日外、7 日内
+- 🆘 **无人接单工单（超6小时）**：节点处于任一触发节点 + 补充负责人为空 + 距发起 ≥6 小时，按已发布时长降序（v56 新增）
 
-工单分栏只列处理人名字不 @（临近结单的私聊提醒由 ticket-bot 负责）；工单源表读取失败时自动降级为不带工单分栏，不影响 DDL 播报。相关配置见 `server/.env.example` 的 `TICKET_*` 项，字段/节点值改动需与 ticket-bot 侧同步。
+工单分栏只列处理人名字不 @（临近结单的私聊提醒与无人接单的问询/组长升级由 ticket-bot 负责）。相关配置见 `server/.env.example` 的 `TICKET_*` 项，字段/节点值改动需与 ticket-bot 侧同步。
+
+**晚间静默（播报时段限制）**：每日 DDL 播报（含逾期确认私聊）触发落在 02:00–09:00（Asia/Shanghai，`QUIET_HOURS_START/END` 可配、`QUIET_HOURS_DISABLED=1` 关闭）内时不直接执行，积压到 09:00 整点以补发时刻数据重跑；`/test-ddl`、`/test-broadcast` 等人工触发与对话/指令回复不受限。实现见 `server/src/utils/quietHours.js`。
 
 **表2：维护日志（表ID: tbl_log）**
 
