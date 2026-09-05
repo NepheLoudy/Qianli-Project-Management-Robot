@@ -24,11 +24,13 @@ function getTicketTitle(fields, recordId) {
 }
 
 /**
- * 获取未结单工单并按理想结单时间分桶
+ * 获取未结单工单并按理想结单时间分桶（ticket-bot 不可用时的降级直读链路）
  *
  * 未结单判定对齐 ticket-bot 的结单提醒分支逻辑（checkClosingTickets）：
- * 审批节点处于未审批的最后一层「回执单：是否结单」，且当前处理人有值
- * （无论公开质询被接单还是指定负责人，走到该节点即代表工作已交付、只差结单确认）。
+ * 审批节点处于未审批的最后一层「回执单：是否结单」。
+ *
+ * 播报对象对齐 ticket-bot unclosedService 主链路口径：指定负责人 → 补充负责人
+ * （两者都为空的工单不播，不回退到发起人/当前处理人——当前处理人是结单提醒的口径）。
  *
  * 分桶（对齐 DDL 播报节奏）：
  *   - urgent：理想结单时间在 2 日内（含已超期，超期单独标注）
@@ -37,7 +39,7 @@ function getTicketTitle(fields, recordId) {
  * @returns {Promise<{ urgent: Array, week: Array }>}
  */
 async function getUnclosedBuckets() {
-  const { tableId, approvalField, closeValue, deadlineField } = config.ticketClose;
+  const { tableId, approvalField, closeValue, deadlineField, assigneeField, supplementField } = config.ticketClose;
   const filter = `CurrentValue.[${approvalField}] = "${closeValue}"`;
   const records = await bitable.getAllRecords(tableId, { filter });
 
@@ -48,9 +50,18 @@ async function getUnclosedBuckets() {
   for (const record of records) {
     const fields = record.fields;
 
-    // 有人负责才播报（当前处理人有值），与 ticket-bot 结单提醒分支一致
-    const handler = fields['当前处理人']?.[0];
-    if (!handler || !handler.id) continue;
+    // 播报对象：指定负责人 → 补充负责人（去重并集），与 ticket-bot 分组分栏口径一致
+    const people = [];
+    const seen = new Set();
+    for (const field of [assigneeField, supplementField]) {
+      for (const p of fields[field] || []) {
+        if (p && p.id && !seen.has(p.id)) {
+          seen.add(p.id);
+          people.push(p);
+        }
+      }
+    }
+    if (people.length === 0) continue;
 
     const deadline = fields[deadlineField];
     if (!deadline) continue;
@@ -61,8 +72,8 @@ async function getUnclosedBuckets() {
     const ticket = {
       recordId: record.record_id,
       title: getTicketTitle(fields, record.record_id),
-      handlerId: handler.id,
-      handlerName: handler.name || '未知',
+      handlerId: people[0].id,
+      handlerName: people.map((p) => p.name || '未知').join('、'),
       daysLeft,
       deadlineFormatted: deadlineTs.format('YYYY-MM-DD'),
     };

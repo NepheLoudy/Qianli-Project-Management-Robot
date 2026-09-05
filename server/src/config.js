@@ -90,6 +90,9 @@ module.exports = {
     // 未审批的最后一层节点（处于该节点 = 工作已交付但尚未结单）
     closeValue: process.env.TICKET_CLOSE_VALUE || '回执单：是否结单',
     deadlineField: process.env.TICKET_DEADLINE_FIELD || '理想结单时间',
+    // 降级直读链路的播报对象字段（与 ticket-bot unclosedService 口径一致：指定 → 补充）
+    assigneeField: process.env.TICKET_ASSIGNEE_FIELD || '指定负责人',
+    supplementField: process.env.TICKET_SUPPLEMENT_FIELD || '补充负责人',
   },
   // 指令仅群内触发；私聊指令仅白名单内可用（open_id / p2p chat_id 任一命中即可）。
   // 两个列表都留空 = 所有人（含管理员）私聊指令均关闭，fail-closed。

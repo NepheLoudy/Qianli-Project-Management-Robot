@@ -84,22 +84,22 @@ async function sendOverdueConfirmation(project) {
 
 /**
  * 解析用户回复是否为 "是" 或 "否"
+ *
+ * 只认整句匹配的确认/否认词，不做 contains 级别的宽松匹配——
+ * 否则「你是谁」「是的（附和他人）」这类日常消息会被误判成项目确认，
+ * 直接把项目状态改成 completed（写过库，误判代价高）。
+ *
  * @returns {'yes' | 'no' | null}
  */
 function parseConfirmationReply(text) {
   if (!text) return null;
   const t = text.trim().toLowerCase();
 
-  const yesPatterns = /^(是|yes|y|确认|完成|已完成|done|ok)$/i;
-  const noPatterns = /^(否|no|n|未完成|没完成|not yet|pending)$/i;
+  const yesPatterns = /^(是|是的|yes|y|确认|完成|已完成|做完了|完成了|搞定|搞定了|好|好的|没问题|done|ok|okay)$/i;
+  const noPatterns = /^(否|不|不是|no|n|未完成|没完成|没做完|还没|还没完成|没有完成|not yet|pending)$/i;
 
   if (yesPatterns.test(t)) return 'yes';
   if (noPatterns.test(t)) return 'no';
-
-  if (t.length <= 10) {
-    if (t.includes('是') && !t.includes('不是') && !t.includes('否')) return 'yes';
-    if (t.includes('否') || t.includes('没完成') || t.includes('未完成')) return 'no';
-  }
 
   return null;
 }
@@ -139,12 +139,15 @@ async function handleReply(event) {
     return { handled: false, reason: '该用户无待确认项目' };
   }
 
-  // 找到匹配的待确认项目（群聊需匹配 chatId，私聊不限制）
+  // 找到匹配的待确认项目。
+  // 来源必须与发送方式一致：私聊发出的确认只能私聊回复（群聊里含「是/否」的
+  // 日常消息不得被当成确认），群聊发出的只能在同一个群里回复
   const pendingIndex = pendingList.findIndex(p => {
-    if (p.sentMode === 'p2p') return true; // 私聊发送的，任何来源都可以回复
+    if (p.sentMode === 'p2p') {
+      return chatType === 'p2p';
+    }
     if (p.sentMode === 'group') {
-      // 群聊发送的，必须来自同一个群
-      return p.chatId && p.chatId === replyChatId;
+      return chatType === 'group' && p.chatId && p.chatId === replyChatId;
     }
     return false;
   });

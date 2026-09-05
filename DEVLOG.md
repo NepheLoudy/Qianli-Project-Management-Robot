@@ -1,8 +1,18 @@
 # DEVLOG · project-management-robot（knowledge-tracker · 对话枢纽/项目管理机器人）
 
-版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../AGENTS.md)）。
+版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v52**（2026-09-05）。
+当前最新：**v53**（2026-09-05）。
+
+## 阶段十二 · 评审批修（2026-09-05）
+
+### v53 · 2026-09-05 · fix（随本提交落地，无独立哈希）
+**DDL 确认防误判 + 降级口径对齐 + 播报状态后置落盘（跨项目评审批修）**
+- `server/src/services/ddlConfirmService.js`：p2p 发出的逾期确认**只能私聊回复**（原 `sentMode==='p2p'` 接受任意来源，群里含「是」的日常消息会被当成确认直接把项目状态改成 completed）；`parseConfirmationReply` 删除 contains 宽松分支（≤10 字含「是」即 yes）、只认整句确认/否认词表（新增常用变体：做完了/搞定了/好/没问题/还没 等），防"你是谁""是的（附和他人）"误判。
+- `server/src/services/ticketCloseService.js`：降级直读链路（ticket-bot 不可用时）的工单分栏播报对象改**指定负责人 → 补充负责人**（原取「当前处理人」，与 ticket-bot 主链路 `unclosedService` 及两项目文档约定不一致，降级日分栏负责人口径会漂移）；多人并集「、」拼接。`config.js` 新增 `TICKET_ASSIGNEE_FIELD`/`TICKET_SUPPLEMENT_FIELD`（默认值即用，NAS .env 无需必配）。
+- `server/src/cron/index.js`：DDL 播报「今日已播报」标记改**至少一群送达后落盘**（原进门即写状态文件，当天发送全败也会被标记吞掉、播报静默丢失）；全部失败当天可 /test-broadcast 重跑，部分成功用各群 /test-ddl 补发（不受标记限制）。
+- `server/src/services/chatService.js`：`/test-ddl` 在未配置播报的群聊里拒绝执行（防测试卡经 owner webhook 兜底跨群打到 owner 群）；私聊管理员保留 owner 群兜底；指令 handler 透传 chatType。
+- 联动备注：ticket-bot v49 同批修复多组别工单漏播（审批节点「；」拼接拆段匹配）+ 多人接单续接窗口 + 接单整句匹配等；本仓库改动与其无接口变更，仅行为修正。
 
 ## 阶段十一 · 工单分栏接口超时兜底（2026-09-05）
 

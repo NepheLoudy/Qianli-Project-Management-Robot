@@ -149,7 +149,12 @@ async function handleStatusCommand() {
   return lines.join('\n');
 }
 
-async function handleTestDDLCommand(chatCtx) {
+async function handleTestDDLCommand(chatCtx, chatType) {
+  // 非播报群的群聊里不借用 owner webhook 兜底，避免测试卡跨群打到 owner 群；
+  // 私聊（管理员白名单）保留 owner webhook 兜底用于测试
+  if (!chatCtx && chatType === 'group') {
+    return '❌ 当前群未配置 DDL 播报，请在播报群内使用 /test-ddl（或私聊机器人测试，卡会发到 owner 群）';
+  }
   try {
     const projectService = require('./projectService');
     const { sendDDLReport, getRandomQuote } = require('../feishu/bot');
@@ -331,7 +336,7 @@ async function processChatMessage(event) {
       const handler = commandHandlers[cmd.command];
       if (handler) {
         try {
-          replyText = await handler(cmd.args, chatCtx);
+          replyText = await handler(cmd.args, chatCtx, chatType);
         } catch (err) {
           console.error('[对话服务] 指令执行失败:', err);
           replyText = `❌ 指令执行失败：${err.message}`;

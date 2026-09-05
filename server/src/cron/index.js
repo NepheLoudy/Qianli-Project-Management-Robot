@@ -65,9 +65,6 @@ async function runDDLBroadcast() {
     return null;
   }
 
-  lastBroadcastDate = today;
-  saveBroadcastState(today);
-
   console.log('[DDL播报] 开始执行每日DDL播报...');
 
   let attempt = 0;
@@ -155,6 +152,14 @@ async function runDDLBroadcast() {
 
       if (broadcastTargets.length === 0) {
         console.warn('[DDL播报] 未配置任何播报群 webhook，跳过群播报');
+      }
+
+      // 今日标记：至少一群送达后才落盘。不能提前标记——提前落盘后当天发送全败
+      // 也不会再重试，播报会静默丢失。全部失败时当天可手动 /test-broadcast 重跑；
+      // 部分成功的补发用各群 /test-ddl（它不受本标记限制）
+      if (deliveredGroups.size > 0) {
+        lastBroadcastDate = today;
+        saveBroadcastState(today);
       }
 
       broadcastHistory.unshift({
