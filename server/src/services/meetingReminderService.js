@@ -32,9 +32,15 @@ function containsMeetingCard(message) {
   if (!message || !message.content) return false;
 
   try {
-    const content = typeof message.content === 'string'
-      ? JSON.parse(message.content)
-      : message.content;
+    let content = message.content;
+    if (typeof content === 'string') {
+      try {
+        content = JSON.parse(content);
+      } catch (err) {
+        // 非 JSON 字符串 content（system/转发等消息形态）不可能是会议卡片，按无卡片处理
+        return false;
+      }
+    }
 
     const msgType = message.msg_type || message.message_type;
 

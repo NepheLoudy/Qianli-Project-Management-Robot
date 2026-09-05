@@ -6,6 +6,10 @@
 
 ## 阶段九 · 指令边界收紧（2026-09-05）
 
+### v50 · 2026-09-05 · docs（随本提交落地，无独立哈希） · fix
+**会议提醒卡片识别对非 JSON 字符串 content 安全降级（消除 error 日志噪音）**
+- 全量 debug 发现：meetingReminderService 扫群消息时，system 等消息形态的 content 是非 JSON 字符串，JSON.parse 抛错刷 `[会议提醒] 解析会议卡片失败` error（有 catch 兜底、功能无损）。改为解析失败直接按无卡片处理，行为不变、日志恢复干净。
+
 ### v49 · 2026-09-05 · docs（随本提交落地，无独立哈希） · feat
 **指令仅群内触发；私聊指令仅管理员白名单可用（对话枢纽统一门禁）**
 - `server/src/services/chatService.js`：私聊（p2p）收到 / 指令时先过白名单（`P2P_COMMAND_OPEN_IDS`/`P2P_COMMAND_CHAT_IDS`，sender open_id 与 p2p chat_id 任一命中），未命中回复「指令仅支持在群聊中 @机器人 使用」；群聊照旧（@机器人门禁 + 回复到来源群）；私聊普通对话不受限。
