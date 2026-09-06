@@ -268,3 +268,13 @@
 - `push.js` 部署流程开头新增 [0/4] 同步步骤：填表 → `npm run push` 一条命令转存+部署；同步失败仅告警不阻断部署（沿用现有 JSON）。JSON description 注明为生成物勿手改。
 - 图片转存权限实测（用户已在开放平台开通）：伪造 image_key 探针报 234001 Invalid param 而非无权限（`im:image` ✅）；1px PNG 真实 upload_all 拿到 file_token（`drive:file:upload` ✅，multipart 链路端到端通）。本次部署重启 pm2 即刷新 token，带图消息图片即刻开始转存入库。
 - README §9/结构树同步；`/autoreply` 指令、群范围 `AUTO_REPLY_CHAT_IDS` 说明不变。
+
+### v60 · 2026-09-06 · ebfa332 · feat
+**关键词回答表首条真实规则上线（近看石头大→远看大石头）+ GitHub 补推 v58/v59**
+- 用户在 `关键词回答表.xlsx` 填入首条真实规则，sync 脚本转存 2 条规则（示例+真实）随部署生效；`npm run push` 全链路验证：表格→JSON→提交→部署，一条命令完成。
+- Watt Toolkit 加速开启后 GitHub 恢复可达，补推 v58（029b511）/v60（ebfa332）两笔本地提交；NAS 拉取 GitHub 失败属常态，SFTP 兜底照常工作。
+- 群内可直接验证：在任意群发「近看石头大」，机器人自动回复「远看大石头」（对话回路，不受晚间静默限制）。
+
+### v61 · 2026-09-06 · 随本提交落地 · docs
+**DEVLOG 补记 v60 锚点（ebfa332）**
+- v60 代码随 push 落地时漏附 DEVLOG 条目，本条补记并随 docs 提交入库。
