@@ -250,3 +250,13 @@
 - `server/.env.example` 补 `TICKET_ACCEPT_VALUES` / `TICKET_ROUTE_FIELD`（config.js 已读取、有默认值，此前清单缺漏）。
 - 文案纠偏：`keywords.json` description 与 `/keywords` 指令提示去掉过时的「#标签触发」「需重启生效」说法（v23 起发言全量记录、loadKeywordsConfig 每次调用重读即改即生效）；widget 端 KeywordTracker 同款文案未随批改（需重新构建上传小组件，下次一并）。
 - 已知边界（意图不明，未动）：API 成功路径下未命中 GROUP_ROUTES 的群回落空桶（降级路径却共用全群桶）；静默冲刷进行中新登记积压的调度窗口可能排到下一个 end 整点；`QUIET_HOURS_DISABLED=1` 时遗留积压不冲刷不清理（四仓同款行为，保持一致）。
+
+## 阶段十一 · 关键词自动回复 + 监听插件带图修复（2026-09-06）
+
+### v58 · 2026-09-06 · 随本提交落地 · feat
+**新增「关键词自动回复」独立功能（本地回答表，命中即自动回答）+ 修复关键词监听插件带图消息整条丢失**
+- 新增 `server/src/config/autoReplies.json`（关键词→回答本地表，改完即时生效无需重启）与 `server/src/services/autoReplyService.js`：群消息文本包含关键词即自动引用回复（@机器人/私聊提问同样命中且优先于欢迎语；同义词放同一条；多条命中合并一条回复）。防误伤：其他应用/机器人发出的消息不触发（防互答循环）、消息去重、指令优先、审批群始终排除。回复走 `replyTextMessage`，失败降级 `sendTextToChat`。
+- **与原关键词监听插件分立**（用户要求）：自动回复群范围走新 env `AUTO_REPLY_CHAT_IDS`（逗号分隔，空或 `*` = 所有群，与 `KEYWORD_CHAT_ID` 无关）；指令 `/autoreply` 查看回答表，`/keywords` 还给监听插件；新增 `GET /api/autoreplies/config`。属对话回路，不受晚间静默限制。
+- **监听插件故障修复**（NAS pm2 日志实锤：9/2 起带图消息持续 `WrongRequestBody: file token is invalid`，整条记录连文本一起丢）：根因是 IM 消息 `image_key` 不能直接作多维表格附件 file_token（飞书限制）。`client.js` 新增 `downloadImage`（GET /im/v1/images 二进制）+ `uploadMediaToBitable`（drive upload_all，parent_type=bitable_file，parent_node=base app_token）转存入库；单张失败只跳过该张，全部失败降级为无图记录（文本/时间/发送人保住）；保留 WrongRequestBody 兜底降级。需应用开通 `im:image`、`drive:file:upload` 权限（用户自行开通后自动生效，无需再部署）。
+- 性能：`findOrCreateKeywordParent` 的「全部发言」父记录 ID 改内存缓存（原实现每条群消息全量分页扫整表，随发言增长必然拖垮），父记录被删时写入失败路径清缓存自动重扫。
+- 文档：README 功能 §4（图片转存说明）/§9（自动回复）、API 表、项目结构树、`.env.example` 补 `AUTO_REPLY_CHAT_IDS`；`/help`、`/status` 同步。

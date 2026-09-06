@@ -6,6 +6,7 @@ const projectService = require('./services/projectService');
 const { startCronJobs, runDDLBroadcast, getBroadcastHistory, getCronStatus } = require('./cron');
 const logService = require('./services/logService');
 const keywordService = require('./services/keywordService');
+const autoReplyService = require('./services/autoReplyService');
 const { startEventSubscription, handleMessageEvent } = require('./feishu/eventSubscription');
 
 const app = express();
@@ -142,6 +143,16 @@ app.get('/api/keywords/config', (req, res) => {
     res.json(config);
   } catch (err) {
     console.error('获取关键词配置失败:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 关键词自动回答表（独立于关键词监听插件）
+app.get('/api/autoreplies/config', (req, res) => {
+  try {
+    res.json(autoReplyService.loadAutoRepliesConfig());
+  } catch (err) {
+    console.error('获取关键词自动回答表失败:', err);
     res.status(500).json({ error: err.message });
   }
 });

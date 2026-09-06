@@ -31,6 +31,7 @@
 ### 4. 群聊发言记录（原关键词监听）
 - 监听指定群聊（`KEYWORD_CHAT_ID`）的**全部消息**（自 v23 起不再按关键词过滤，父记录固定为「全部发言」；`keywords.json` 与 `/keywords` 指令仅作展示兼容）
 - 记录到多维表格：时间、发送人、组别（全部发言）、消息内容、图片
+- 图片真入库：IM `image_key` 不能直接作附件 file_token（飞书限制），自动走「下载消息图片 → 重传多维表格」转存（需应用开通 `im:image`、`drive:file:upload` 权限）；单张转存失败只跳过该张，全部失败降级为**无图记录**，文本/时间/发送人不丢
 - 前端可按分组折叠/展开查看
 - 注意：群里 @机器人的消息走对话链路，不会被本功能记录
 
@@ -67,6 +68,18 @@
 - 检测到会议卡片后自动 @所有人 提醒参会
 - 5 分钟内同一群不重复触发
 
+### 9. 关键词自动回复（本地回答表）
+- 回答表：`server/src/config/autoReplies.json`，格式 `replies: [{ keywords: [同义词...], answer }]`，**修改后即时生效，无需重启**
+- 触发：消息文本**包含**关键词即命中（不分大小写）；一条消息命中多条时合并为一条回复
+- 生效范围（与原关键词监听插件**分立**，互不依赖）：
+  - 未@机器人的群消息：`AUTO_REPLY_CHAT_IDS` 指定（逗号分隔 chat_id，留空或 `*` = 所有群；审批群始终排除）
+  - @机器人 / 私聊提问：不受群范围限制，命中即回答（优先于默认欢迎语）
+- 指令/接口：`/autoreply` 查看回答表，`GET /api/autoreplies/config` 读配置；`/keywords` 仍只管原监听插件
+- 回复方式：引用回复原消息，失败降级为直接发送
+- 防干扰：审批群不启用；其他应用/机器人发出的消息（如 webhook 播报卡片）不触发；指令优先于自动回复
+- 属对话回路（用户消息触发的即时应答），不受晚间静默窗口限制
+- `/keywords` 可查看回答表内容，`/status` 显示启用状态与条数
+
 ## 项目结构
 
 ```
@@ -96,6 +109,7 @@ project-management-robot/
 │   │   │   ├── projectService.js    # 项目服务（层级 / 4 群过滤）
 │   │   │   ├── logService.js        # 维护日志服务
 │   │   │   ├── keywordService.js    # 关键词监听服务
+│   │   │   ├── autoReplyService.js  # 关键词自动回复服务（autoReplies.json）
 │   │   │   ├── chatService.js       # 对话 / 指令服务
 │   │   │   ├── ddlConfirmService.js # 逾期确认服务
 │   │   │   ├── ticketCloseService.js # 工单分栏取数（主链路 API + 降级直读）
@@ -246,6 +260,9 @@ XY_CHAT_ID=xy组群聊ID
 # 关键词监听群聊 ID（该群的全部发言会被记录）
 KEYWORD_CHAT_ID=
 
+# 关键词自动回复监听群范围（未@机器人时生效；逗号分隔，'*' 或留空 = 所有群，与 KEYWORD_CHAT_ID 无关）
+# AUTO_REPLY_CHAT_IDS=
+
 # 会议提醒监控群（已不生效：当前实现监听所有群）
 MEETING_CHAT_IDS=
 
@@ -348,6 +365,7 @@ node push.js "提交说明"
 |------|------|------|
 | `/api/keywords/config` | GET | 查看记录配置 |
 | `/api/keywords/records` | GET | 获取记录列表（支持层级） |
+| `/api/autoreplies/config` | GET | 查看关键词自动回答表（独立功能） |
 
 ### 维护日志
 | 接口 | 方法 | 说明 |

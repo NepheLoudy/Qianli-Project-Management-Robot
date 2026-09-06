@@ -1,6 +1,7 @@
 const lark = require('@larksuiteoapi/node-sdk');
 const config = require('../config');
 const keywordService = require('../services/keywordService');
+const autoReplyService = require('../services/autoReplyService');
 const chatService = require('../services/chatService');
 const ddlConfirmService = require('../services/ddlConfirmService');
 const meetingReminderService = require('../services/meetingReminderService');
@@ -9,7 +10,7 @@ let wsClient = null;
 
 /**
  * 消息事件处理管道（长连接与 HTTP 回调/网关转发共用）
- * 依次经过：p2p DDL确认 → 对话/指令 → 群聊 DDL确认 → 关键词监听 → 会议提醒
+ * 依次经过：p2p DDL确认 → 对话/指令 → 群聊 DDL确认 → 关键词自动回复 → 关键词监听 → 会议提醒
  */
 async function handleMessageEvent(data) {
   try {
@@ -47,6 +48,13 @@ async function handleMessageEvent(data) {
         console.log('[事件订阅] DDL确认服务已处理:', confirmResult.reply || confirmResult.reason);
         return;
       }
+    }
+
+    // 关键词自动回复：未@机器人的群消息命中本地回答表时自动回答
+    // （@机器人/私聊的命中在 chatService 内处理，不会走到这里；回复后不 return，发言记录照常）
+    const autoResult = await autoReplyService.processMessageEvent(data);
+    if (autoResult.matched) {
+      console.log('[事件订阅] 关键词自动回复命中:', autoResult.keywords.join('/'), autoResult.replied ? '已回复' : '回复失败');
     }
 
     // 关键词监听：如果配置了 KEYWORD_CHAT_ID，则只处理指定群的消息

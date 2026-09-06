@@ -2,12 +2,16 @@ const fs = require('fs');
 const path = require('path');
 const bitableApi = require('../feishu/bitable');
 const config = require('../config');
-const { requestAPI } = require('../feishu/client');
+const client = require('../feishu/client');
 
 const KEYWORDS_CONFIG_PATH = path.join(__dirname, '../config/keywords.json');
 const TABLE_ID = () => config.bitable.keywordTableId;
 
 const processedMessageIds = new Set();
+
+// 「全部发言」父记录 ID 内存缓存：避免每条群消息都全量分页扫描整表找父记录
+//（发言表随时间无限增长，逐条扫表会越来越慢直至触发限流）。父记录被删时由写入失败路径清缓存重扫。
+let cachedAllSpeechParentId = '';
 
 function loadKeywordsConfig() {
   try {
@@ -158,7 +162,7 @@ function extractImageKeys(message) {
 
 async function getUserName(userId) {
   try {
-    const res = await requestAPI(
+    const res = await client.requestAPI(
       'GET',
       `/contact/v3/users/${userId}`
     );
@@ -174,6 +178,10 @@ async function getUserName(userId) {
 }
 
 async function findOrCreateKeywordParent(groupName) {
+  if (groupName === '全部发言' && cachedAllSpeechParentId) {
+    return cachedAllSpeechParentId;
+  }
+
   const tableId = TABLE_ID();
 
   const allRecords = await bitableApi.getAllRecords(tableId);
@@ -201,6 +209,7 @@ async function findOrCreateKeywordParent(groupName) {
       }
       if (!hasParent) {
         console.log(`[关键词监听] 找到已有父记录: ${groupName} (${record.record_id})`);
+        if (groupName === '全部发言') cachedAllSpeechParentId = record.record_id;
         return record.record_id;
       }
     }
@@ -212,7 +221,48 @@ async function findOrCreateKeywordParent(groupName) {
 
   const record = await bitableApi.createRecord(tableId, parentFields);
   console.log(`[关键词监听] 已创建关键词父记录: ${groupName} (${record.record_id})`);
+  if (groupName === '全部发言') cachedAllSpeechParentId = record.record_id;
   return record.record_id;
+}
+
+// 写入子记录：失败时若非请求体问题（如父记录被手动删除），清父缓存重扫一次再试
+async function createChildRecord(childFields) {
+  const parentRecordId = await findOrCreateKeywordParent('全部发言');
+  childFields['parentId'] = [parentRecordId];
+
+  try {
+    return await bitableApi.createRecord(TABLE_ID(), childFields);
+  } catch (err) {
+    if (/WrongRequestBody/.test(err.message)) {
+      // 字段值本身非法（带图消息的 image_key 不是附件 file_token），重试无用，交由上层降级
+      throw err;
+    }
+    console.warn('[关键词监听] 写入失败，清父记录缓存重扫后重试:', err.message);
+    cachedAllSpeechParentId = '';
+    const freshParentId = await findOrCreateKeywordParent('全部发言');
+    childFields['parentId'] = [freshParentId];
+    return bitableApi.createRecord(TABLE_ID(), childFields);
+  }
+}
+
+// 把 IM 消息图片转存为可入库的附件 file_token：下载消息图片 → 重新上传多维表格。
+// IM 的 image_key 不能直接作附件 file_token（飞书限制）。单张失败只跳过该张
+//（权限未开通/网络抖动不阻塞发言入库），全部失败 = 无图记录。
+async function resolveImageFileTokens(imageKeys, messageId) {
+  const fileTokens = [];
+  for (let i = 0; i < imageKeys.length && i < 9; i++) {
+    try {
+      const buf = await client.downloadImage(imageKeys[i]);
+      const token = await client.uploadMediaToBitable(buf, `kw_${messageId || Date.now()}_${i}.jpg`);
+      fileTokens.push(token);
+    } catch (err) {
+      console.warn(`[关键词监听] 图片转存失败，跳过该张 (image_key: ${imageKeys[i]}):`, err.message);
+    }
+  }
+  if (imageKeys.length > 9) {
+    console.warn(`[关键词监听] 单条消息图片 ${imageKeys.length} 张，仅转存前 9 张`);
+  }
+  return fileTokens;
 }
 
 async function processMessageEvent(event) {
@@ -249,9 +299,6 @@ async function processMessageEvent(event) {
   };
 
   try {
-    const parentRecordId = await findOrCreateKeywordParent('全部发言');
-    childFields['parentId'] = [parentRecordId];
-
     if (sendTime) {
       childFields['时间'] = sendTime;
     }
@@ -261,11 +308,27 @@ async function processMessageEvent(event) {
     }
 
     if (imageKeys.length > 0) {
-      childFields['图片'] = imageKeys.map(key => ({ file_token: key }));
+      const fileTokens = await resolveImageFileTokens(imageKeys, messageId);
+      if (fileTokens.length > 0) {
+        childFields['图片'] = fileTokens.map(token => ({ file_token: token }));
+      }
     }
 
-    const childRecord = await bitableApi.createRecord(TABLE_ID(), childFields);
-    console.log(`[关键词监听] 已记录发言 - 用户:${senderId} (父记录: ${parentRecordId})`);
+    let childRecord;
+    try {
+      childRecord = await createChildRecord(childFields);
+    } catch (err) {
+      if (!childFields['图片']) {
+        throw err;
+      }
+      // IM 消息的 image_key 不是附件字段要的 file_token（飞书限制，需下载后重新上传才能入库），
+      // 带图消息此前整条写入失败、文本一起丢——降级为无图记录，保住文本/时间/发送人
+      console.warn('[关键词监听] 图片字段写入失败，降级为无图记录:', err.message);
+      delete childFields['图片'];
+      childRecord = await createChildRecord(childFields);
+    }
+
+    console.log(`[关键词监听] 已记录发言 - 用户:${senderId} (父记录: ${childFields['parentId'][0]})`);
 
     return {
       matched: true,
@@ -274,7 +337,7 @@ async function processMessageEvent(event) {
       results: [{
         keyword: '全部发言',
         success: true,
-        parentRecordId,
+        parentRecordId: childFields['parentId'][0],
         childRecordId: childRecord.record_id,
       }],
     };

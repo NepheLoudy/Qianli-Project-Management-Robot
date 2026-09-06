@@ -1,5 +1,6 @@
 const bot = require('../feishu/bot');
 const keywordService = require('./keywordService');
+const autoReplyService = require('./autoReplyService');
 const { getBroadcastHistory } = require('../cron');
 const config = require('../config');
 const dayjs = require('dayjs');
@@ -105,7 +106,8 @@ async function handleHelpCommand() {
   /help      显示此帮助信息
   /status    查看服务运行状态
   /test-ddl  测试DDL播报（与正式播报同内容，可作部分失败后的补发）
-  /keywords  查看关键词配置（仅展示；当前记录群内全部发言，不按关键词过滤）
+  /keywords  查看关键词监听插件配置（发言记录）
+  /autoreply 查看关键词自动回答表（独立功能）
   /history   查看最近播报历史
 
 财务审批指令（审批群内自动切换为 /approval-*，转发 approval-bot）：
@@ -120,11 +122,13 @@ async function handleHelpCommand() {
 使用方式：
   • 群聊中请先 @${botName} 再发送指令
   • 示例：@${botName} /help
-  • 示例：@${botName} /print-status`;
+  • 示例：@${botName} /print-status
+  • 群内消息命中关键词回答表会自动回复（/autoreply 查看）`;
 }
 
 async function handleStatusCommand() {
   const keywordsConfig = keywordService.loadKeywordsConfig();
+  const autoRepliesConfig = autoReplyService.loadAutoRepliesConfig();
   const botName = config.bot.name;
 
   const lines = [
@@ -137,6 +141,7 @@ async function handleStatusCommand() {
     ``,
     `📋 关键词监听：${keywordsConfig.enabled ? '✅ 已启用' : '❌ 未启用'}`,
     `   监听关键词数量：${keywordsConfig.keywords.length} 个`,
+    `💬 关键词自动回复：${autoRepliesConfig.enabled ? `✅ 已启用（回答表 ${autoRepliesConfig.replies.length} 条）` : '❌ 未启用'}`,
     ``,
     `⏰ 定时任务：`,
     `   DDL播报：${config.cron.schedule} (Asia/Shanghai)`,
@@ -202,24 +207,50 @@ async function handleTestDDLCommand(chatCtx, chatType) {
 
 async function handleKeywordsCommand() {
   const keywordsConfig = keywordService.loadKeywordsConfig();
-  
+
   if (!keywordsConfig.enabled) {
     return '📋 关键词监听：未启用';
   }
-  
+
   const lines = [
-    `📋 关键词监听：已启用 (${keywordsConfig.keywords.length}个)`,
+    `📋 关键词监听（发言记录插件）：已启用 (${keywordsConfig.keywords.length}个)`,
     '',
     '当前监听关键词：',
   ];
-  
+
   keywordsConfig.keywords.forEach((kw, i) => {
     lines.push(`  ${i + 1}. ${kw}`);
   });
-  
+
   lines.push('');
   lines.push('提示：修改 server/src/config/keywords.json 后即时生效（无需重启）；v23 起发言全量记录，列表仅作展示兼容');
-  
+  lines.push('关键词自动回复是独立功能，发送 /autoreply 查看');
+
+  return lines.join('\n');
+}
+
+async function handleAutoReplyCommand() {
+  const autoRepliesConfig = autoReplyService.loadAutoRepliesConfig();
+
+  if (!autoRepliesConfig.enabled) {
+    return '💬 关键词自动回复：未启用';
+  }
+
+  const lines = [];
+
+  if (autoRepliesConfig.replies.length === 0) {
+    lines.push('💬 关键词自动回复：已启用（回答表为空）');
+  } else {
+    lines.push(`💬 关键词自动回复：已启用 (${autoRepliesConfig.replies.length}条)，命中即自动回答：`);
+    autoRepliesConfig.replies.forEach((r, i) => {
+      const preview = r.answer.trim().replace(/\s+/g, ' ');
+      lines.push(`  ${i + 1}. [${r.keywords.join('/')}] → ${preview.slice(0, 30)}${preview.length > 30 ? '…' : ''}`);
+    });
+  }
+
+  lines.push('');
+  lines.push('提示：修改 server/src/config/autoReplies.json 后即时生效（无需重启）');
+
   return lines.join('\n');
 }
 
@@ -250,6 +281,7 @@ const commandHandlers = {
   '/status': handleStatusCommand,
   '/test-ddl': handleTestDDLCommand,
   '/keywords': handleKeywordsCommand,
+  '/autoreply': handleAutoReplyCommand,
   '/history': handleHistoryCommand,
 };
 
@@ -372,7 +404,15 @@ async function processChatMessage(event) {
       }
     }
   } else {
-    replyText = await handleNormalChat(senderName, message.chat_id);
+    // 关键词自动回复：@机器人/私聊消息命中本地回答表时直接回答，优先于默认欢迎语
+    // （审批群除外，保持财务专属能力；未@机器人的群消息由 eventSubscription 管道处理）
+    const autoHit = isApproval ? null : autoReplyService.buildReplyForText(text);
+    if (autoHit) {
+      console.log('[对话服务] 关键词自动回复命中:', autoHit.keywords.join('/'));
+      replyText = autoHit.text;
+    } else {
+      replyText = await handleNormalChat(senderName, message.chat_id);
+    }
   }
 
   if (replyText) {
