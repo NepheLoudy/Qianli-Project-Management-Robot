@@ -3,6 +3,10 @@
     "ssh2": "^1.17.0"
   },
   "scripts": {
-    "push": "node push.js"
+    "push": "node push.js",
+    "sync:auto-replies": "node scripts/syncAutoReplies.js"
+  },
+  "devDependencies": {
+    "xlsx": "^0.18.5"
   }
 }

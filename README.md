@@ -69,7 +69,9 @@
 - 5 分钟内同一群不重复触发
 
 ### 9. 关键词自动回复（本地回答表）
-- 回答表：`server/src/config/autoReplies.json`，格式 `replies: [{ keywords: [同义词...], answer }]`，**修改后即时生效，无需重启**
+- **填写入口：项目根目录 `关键词回答表.xlsx`**（「关键词回答」工作表，两列：关键词｜回答；同义词用逗号/顿号/分号分隔放同一格，`#` 开头行=注释；详细规则见表内「使用说明」工作表）
+- `npm run push` 开头自动把表格转成 `server/src/config/autoReplies.json` 再部署（转换脚本 `scripts/syncAutoReplies.js`，也可 `npm run sync:auto-replies` 只转存不部署）；**JSON 是生成物，勿手改**
+- 运行时每次收到消息都重读 JSON，**部署完成后改动即时生效，无需重启**
 - 触发：消息文本**包含**关键词即命中（不分大小写）；一条消息命中多条时合并为一条回复
 - 生效范围（与原关键词监听插件**分立**，互不依赖）：
   - 未@机器人的群消息：`AUTO_REPLY_CHAT_IDS` 指定（逗号分隔 chat_id，留空或 `*` = 所有群；审批群始终排除）
@@ -122,6 +124,9 @@ project-management-robot/
 │   │   └── index.js                 # 入口
 │   ├── package.json
 │   └── .env.example
+├── 关键词回答表.xlsx             # 关键词自动回答填写入口（push 时自动转成 autoReplies.json）
+├── scripts/
+│   └── syncAutoReplies.js        # 关键词回答表.xlsx → autoReplies.json 转换脚本
 ├── push.js                       # 一键部署脚本（Git + NAS）
 ├── auto-deploy.js                # GitHub Actions 时代旧部署脚本（已不用，仅存档）
 └── README.md

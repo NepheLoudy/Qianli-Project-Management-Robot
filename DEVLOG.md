@@ -260,3 +260,11 @@
 - **监听插件故障修复**（NAS pm2 日志实锤：9/2 起带图消息持续 `WrongRequestBody: file token is invalid`，整条记录连文本一起丢）：根因是 IM 消息 `image_key` 不能直接作多维表格附件 file_token（飞书限制）。`client.js` 新增 `downloadImage`（GET /im/v1/images 二进制）+ `uploadMediaToBitable`（drive upload_all，parent_type=bitable_file，parent_node=base app_token）转存入库；单张失败只跳过该张，全部失败降级为无图记录（文本/时间/发送人保住）；保留 WrongRequestBody 兜底降级。需应用开通 `im:image`、`drive:file:upload` 权限（用户自行开通后自动生效，无需再部署）。
 - 性能：`findOrCreateKeywordParent` 的「全部发言」父记录 ID 改内存缓存（原实现每条群消息全量分页扫整表，随发言增长必然拖垮），父记录被删时写入失败路径清缓存自动重扫。
 - 文档：README 功能 §4（图片转存说明）/§9（自动回复）、API 表、项目结构树、`.env.example` 补 `AUTO_REPLY_CHAT_IDS`；`/help`、`/status` 同步。
+
+### v59 · 2026-09-06 · 随本提交落地 · feat
+**关键词回答表.xlsx 本地填写入口（push 自动转 JSON）+ 图片转存权限实测生效**
+- 新增项目根目录 `关键词回答表.xlsx`：「关键词回答」工作表两列（关键词｜回答，同义词逗号/顿号/分号分隔放同一格，`#` 开头行=注释）+「使用说明」工作表；作为自动回答规则的**唯一填写入口**。
+- 新增 `scripts/syncAutoReplies.js`（devDependency `xlsx@0.18.5`，仅本地转存用，NAS 生产不装）：xlsx → `autoReplies.json`，自动探测表头行（精确匹配「关键词」「回答」两格，防标题「关键词自动回答表」含词误判；直接按二维矩阵+列索引解析，规避 sheet_to_json 的 range 绝对行号与 `!ref` 起点错位坑——openpyxl 重存后 `!ref` 从 A1 变 B2，混用两套坐标系曾整表静默读空）；`enabled` 总开关沿用现有 JSON。`npm run sync:auto-replies` 可单独转存。
+- `push.js` 部署流程开头新增 [0/4] 同步步骤：填表 → `npm run push` 一条命令转存+部署；同步失败仅告警不阻断部署（沿用现有 JSON）。JSON description 注明为生成物勿手改。
+- 图片转存权限实测（用户已在开放平台开通）：伪造 image_key 探针报 234001 Invalid param 而非无权限（`im:image` ✅）；1px PNG 真实 upload_all 拿到 file_token（`drive:file:upload` ✅，multipart 链路端到端通）。本次部署重启 pm2 即刷新 token，带图消息图片即刻开始转存入库。
+- README §9/结构树同步；`/autoreply` 指令、群范围 `AUTO_REPLY_CHAT_IDS` 说明不变。
