@@ -243,13 +243,21 @@ async function handleAutoReplyCommand() {
   } else {
     lines.push(`💬 关键词自动回复：已启用 (${autoRepliesConfig.replies.length}条)，命中即自动回答：`);
     autoRepliesConfig.replies.forEach((r, i) => {
-      const preview = r.answer.trim().replace(/\s+/g, ' ');
-      lines.push(`  ${i + 1}. [${r.keywords.join('/')}] → ${preview.slice(0, 30)}${preview.length > 30 ? '…' : ''}`);
+      const answers = Array.isArray(r.answers) && r.answers.length
+        ? r.answers
+        : [{ text: r.answer, weight: 1 }];
+      const weights = autoReplyService.displayWeights(answers);
+      const pool = answers.map((a, j) => {
+        const pct = weights[j];
+        const pctStr = pct !== undefined ? ` ${pct}%` : '';
+        return `${a.text.trim().replace(/\s+/g, ' ').slice(0, 16)}${a.text.length > 16 ? '…' : ''}${pctStr}`;
+      }).join(' / ');
+      lines.push(`  ${i + 1}. [${r.keywords.join('/')}] → ${pool.slice(0, 50)}${pool.length > 50 ? '…' : ''}`);
     });
   }
 
   lines.push('');
-  lines.push('提示：修改 server/src/config/autoReplies.json 后即时生效（无需重启）');
+  lines.push('提示：修改 关键词回答表.xlsx 后 npm run push 同步部署（无需重启服务）');
 
   return lines.join('\n');
 }
