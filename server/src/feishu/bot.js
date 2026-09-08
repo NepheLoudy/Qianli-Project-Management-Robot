@@ -92,7 +92,12 @@ function buildAtTag(userId, name) {
 }
 
 // 获取项目在指定人员字段下的成员列表（mentionField 即多维表格字段名，对应各播报群）
+// 优先用归并后的 effMembers（父项目负责人视为子项目也有他，见 projectService.buildEffMembers）；
+// 无归并数据（非 DDL 播报树节点）时回退项目自身字段
 function getFieldMembers(project, mentionField) {
+  if (project.effMembers) {
+    return project.effMembers[mentionField] || [];
+  }
   if (mentionField === 'owner') {
     return project.owner ? [{ id: project.owner, name: project.ownerName }] : [];
   }

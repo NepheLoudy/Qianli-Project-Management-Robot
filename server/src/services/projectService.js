@@ -87,12 +87,11 @@ function recordToProject(record) {
 
   let ownerId = '';
   let ownerName = '';
-  if (f.owner) {
-    const ownerData = Array.isArray(f.owner) ? f.owner[0] : f.owner;
-    if (ownerData) {
-      ownerId = ownerData.id || '';
-      ownerName = ownerData.name || ownerData.en_name || '';
-    }
+  const rawOwner = Array.isArray(f.owner) ? f.owner : (f.owner ? [f.owner] : []);
+  const ownerMembers = parsePersonField(rawOwner); // 完整列表（多选），父负责人归并用
+  if (ownerMembers.length > 0) {
+    ownerId = ownerMembers[0].id;
+    ownerName = ownerMembers[0].name;
   }
 
   // parentId 可能是文本字段，也可能是关联字段（含 record_ids 数组）
@@ -133,6 +132,7 @@ function recordToProject(record) {
     name: f.name || '',
     owner: ownerId,
     ownerName: ownerName,
+    ownerMembers,
     contributers,
     dkyjContributers,
     sjContributers,
@@ -168,6 +168,68 @@ function buildHierarchy(projects) {
   return rootProjects;
 }
 
+// 播报归属成员字段（与播报群 mentionField / 看板人员字段对齐）；
+// 播报时每个项目的「有效成员」= 自身成员 ∪ 各祖先（父/爷…）同字段成员，按 id 去重——
+// 父项目负责人是总负责人，视为其名下所有子项目都有他；子项目自身负责人照旧（自身优先）
+const MEMBER_FIELD_NAMES = ['owner', 'contributers', 'dkyjcontributers', 'sjcontributers', 'xycontributers'];
+
+// item → 该字段原始成员列表（owner 在看板是 User 多选，完整列表用于父负责人归并；
+// ownerId/ownerName 单值语义保留给逾期确认等既有逻辑）
+function membersOf(project, field) {
+  if (field === 'owner') {
+    if (project.ownerMembers && project.ownerMembers.length > 0) return project.ownerMembers;
+    return project.ownerId ? [{ id: project.ownerId, name: project.ownerName || '' }] : [];
+  }
+  if (field === 'contributers') return project.contributers;
+  if (field === 'dkyjcontributers') return project.dkyjContributers;
+  if (field === 'sjcontributers') return project.sjContributers;
+  if (field === 'xycontributers') return project.xyContributers;
+  return [];
+}
+
+function unionMembers(acc, list) {
+  for (const m of list) {
+    if (!m || !m.id) continue;
+    if (!acc.some(x => x.id === m.id)) acc.push(m);
+  }
+}
+
+/**
+ * 为每个项目计算归并成员（effMembers）：自身成员优先，再沿 parentId 链向上并入各祖先
+ * 同字段成员，按 id 去重。无父项目时 effMembers 即自身成员（行为与现状一致）。
+ */
+function buildEffMembers(projects) {
+  const byId = new Map(projects.map(p => [p.id, p]));
+  const cache = new Map();
+
+  function effOf(item) {
+    if (cache.has(item.id)) return cache.get(item.id);
+
+    // 先算父链（自身在前，其后是父、爷…），避免递归重复
+    const chain = [];
+    const seen = new Set();
+    let cur = item;
+    while (cur && !seen.has(cur.id)) {
+      chain.push(cur);
+      seen.add(cur.id);
+      cur = cur.parentId && byId.has(cur.parentId) ? byId.get(cur.parentId) : null;
+    }
+
+    const eff = {};
+    for (const field of MEMBER_FIELD_NAMES) {
+      const members = [];
+      for (const node of chain) unionMembers(members, membersOf(node, field));
+      eff[field] = members;
+    }
+    cache.set(item.id, eff);
+    return eff;
+  }
+
+  for (const p of projects) effOf(p);
+  for (const p of projects) p.effMembers = cache.get(p.id);
+  return projects;
+}
+
 async function getProjectsWithHierarchy() {
   const projects = await getProjects();
   return buildHierarchy(projects);
@@ -194,15 +256,19 @@ async function getDDLForBroadcastWithHierarchy(filter = 'all', preloadedProjects
     };
   });
 
+  // 父项目负责人归并：播报时父项目各人员字段的成员视为其名下所有子项目也有（自身优先，id 去重）
+  buildEffMembers(allProjects);
+
   const hierarchy = buildHierarchy(allProjects);
 
-  // 各播报群对应的人员字段判断（mentionField 即多维表格字段名）
+  // 各播报群对应的人员字段判断（mentionField 即多维表格字段名）；
+  // 用归并后的 effMembers：父项目负责人在该字段 → 其名下未自配该字段的子项目也进本群播报
   const mentionFieldChecks = {
-    owner: item => !!item.owner,
-    contributers: item => item.contributers.length > 0,
-    dkyjcontributers: item => item.dkyjContributers.length > 0,
-    sjcontributers: item => item.sjContributers.length > 0,
-    xycontributers: item => item.xyContributers.length > 0,
+    owner: item => (item.effMembers?.owner || []).length > 0,
+    contributers: item => (item.effMembers?.contributers || []).length > 0,
+    dkyjcontributers: item => (item.effMembers?.dkyjcontributers || []).length > 0,
+    sjcontributers: item => (item.effMembers?.sjcontributers || []).length > 0,
+    xycontributers: item => (item.effMembers?.xycontributers || []).length > 0,
   };
 
   function passesFilter(item) {

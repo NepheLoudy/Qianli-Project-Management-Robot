@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v57**（2026-09-06，随本提交落地）。
+当前最新：**v62**（2026-09-08，随本提交落地）。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -278,3 +278,19 @@
 ### v61 · 2026-09-06 · 随本提交落地 · docs
 **DEVLOG 补记 v60 锚点（ebfa332）**
 - v60 代码随 push 落地时漏附 DEVLOG 条目，本条补记并随 docs 提交入库。
+
+## 阶段十七 · 播报父子归属——父项目负责人归并到子项目（2026-09-08）
+
+### v62 · 2026-09-08 · 随本提交落地 · feat
+**项目看板父子归属：父项目负责人是总负责人，DDL 播报时视为其名下所有子项目也有他（按字段归并、id 去重，子项目自身负责人照旧）**
+- 问题：DDL 播报按群过滤「对应人员字段有人」的项目，父子项目各算各的——子项目没自配某字段（如 owner）时，即使父项目该字段有总负责人，该子项目也不会出现在总负责人所在群的播报里，卡片行也无从 @ 总负责；逾期确认同样因「项目无 owner」静默跳过。
+- 规则（按用户裁定）：播报时每个项目的「有效成员」= 自身各人员字段成员 ∪ 沿 parentId 链向上各祖先（父/爷…）同字段成员，按 id 去重（自身成员在前）。「视为所有子项目都有他」：父项目负责人在某字段 → 其名下未自配该字段的子项目也命中该群过滤；子项目自己配了的照旧生效（自身成员优先、合并显示不互踩）。
+- 实现（`server/src/services/projectService.js`）：
+  - `recordToProject` 保留 owner 完整列表（`ownerMembers`，User 多选原先是只取首个丢数组）；
+  - 新增 `buildEffMembers`：扁平列表上沿 parentId 链按 5 个成员字段（owner/contributers/dkyjcontributers/sjcontributers/xycontributers）归并去重，结果挂 `item.effMembers`（记忆化，按项目 id 缓存）；播报副本节点经 ...spread 天然携带；
+  - `mentionFieldChecks`（各群过滤）改用 `effMembers` 判断——父项目成员在字段 X → 其全部未自配 X 的后代项目进入 X 群播报树；无父项目时 eff=自身，行为与旧版完全一致；
+  - 卡片行渲染（`server/src/feishu/bot.js` `getFieldMembers`）优先读 `effMembers`：叶子行 @/显示 = 子 ∪ 父同字段成员（去重后），同一行不重复 @ 同一人；
+  - 逾期确认（`server/src/services/ddlConfirmService.js`）：`sendOverdueConfirmation` 的 owner 解析增加 eff 回退——子项目自身无 owner 时私聊确认发给父项目总负责（effMembers.owner 首位），ownerName 同步回退。
+- 影响面：DDL 播报（cron）、`/test-ddl`（chatService）、逾期确认共用同一取数函数，一处改动全链路生效；`getDDLAlerts` 等其它接口不动；归并只作用于播报归属与卡片 @，不改写看板数据。
+- 文档：README §2 DDL 播报补「父项目负责人归并（v62）」、§6 逾期确认补「子项目无 owner 回退父项目 owner」；DEVLOG 头部当前最新修正 v57→v62（v58~v61 期间头部指针未同步的历史遗留，一并修正）。
+- 验证：离线桩测试 17 项断言全过——自身无 owner 的子项目因父总负责进 owner 群并渲染 @ 总负责；自身 owner 与父同人去重为 1 人；dkyj 成员归并 = 自身 ∪ 父（自身在前）；独立项目行为不变；逾期确认 A3（无自身 owner）私聊发父总负责、独立项目照旧发自身 owner。部署验证记录随部署补记。

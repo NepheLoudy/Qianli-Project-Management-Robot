@@ -18,10 +18,12 @@ function buildAtTag(openId, name) {
 
 /**
  * 向逾期项目的 owner 私聊发送确认消息
- * @param {Object} project 项目信息（来自 getDDLForBroadcastWithHierarchy 的 overdue 项）
+ * @param {Object} project 项目信息（来自 getDDLForBroadcastWithHierarchy 的 overdue 项；
+ *   owner 为空但 effMembers.owner 有人时——子项目无自己负责人——回退父项目总负责人）
  */
 async function sendOverdueConfirmation(project) {
-  const ownerOpenId = project.owner;
+  const effOwner = (project.effMembers && project.effMembers.owner) || [];
+  const ownerOpenId = project.owner || effOwner[0]?.id || '';
   if (!ownerOpenId) {
     console.warn('[DDL确认] 项目无 owner，跳过:', project.name);
     return { sent: false, reason: '无 owner' };
@@ -35,7 +37,7 @@ async function sendOverdueConfirmation(project) {
   }
 
   const overdueDays = Math.abs(project.daysLeft);
-  const ownerName = project.ownerName || '同学';
+  const ownerName = project.ownerName || effOwner[0]?.name || '同学';
 
   const p2pText = [
     `⚠️ 项目逾期提醒`,
