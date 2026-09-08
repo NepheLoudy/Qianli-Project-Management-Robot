@@ -61,9 +61,9 @@ module.exports = {
     chatId: process.env.KEYWORD_CHAT_ID || '',
   },
   // 关键词自动回复（server/src/config/autoReplies.json）：群消息命中关键词自动回答。
-  // 与原关键词监听插件（KEYWORD_CHAT_ID → 写多维表格）分立，互不依赖。
-  // AUTO_REPLY_CHAT_IDS：未@机器人时的生效群范围（逗号分隔 chat_id）；留空或 '*' = 所有群。
-  // @机器人/私聊提问不受此限。审批群始终排除。
+  // 与原关键词监听插件（KEYWORD_CHAT_ID → 写多维表格）分立，互不依赖，互不影响范围。
+  // AUTO_REPLY_CHAT_IDS：未@机器人时的生效群范围（逗号分隔 chat_id）；留空或 '*' = 所有群
+  //（含财务审批群；审批群的 /approval-* 指令路由不受影响）。@机器人/私聊提问不受此限。
   autoReply: {
     chatIdsRaw: process.env.AUTO_REPLY_CHAT_IDS || '',
   },

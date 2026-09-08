@@ -413,8 +413,8 @@ async function processChatMessage(event) {
     }
   } else {
     // 关键词自动回复：@机器人/私聊消息命中本地回答表时直接回答，优先于默认欢迎语
-    // （审批群除外，保持财务专属能力；未@机器人的群消息由 eventSubscription 管道处理）
-    const autoHit = isApproval ? null : autoReplyService.buildReplyForText(text);
+    // （全群生效含审批群；审批群指令路由 /approval-* 不受影响，未命中仍回财务引导语）
+    const autoHit = autoReplyService.buildReplyForText(text);
     if (autoHit) {
       console.log('[对话服务] 关键词自动回复命中:', autoHit.keywords.join('/'));
       replyText = autoHit.text;

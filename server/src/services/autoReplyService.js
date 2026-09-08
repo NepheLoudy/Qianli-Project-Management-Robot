@@ -58,7 +58,7 @@ function displayWeights(answers) {
 }
 
 // 群范围（与原关键词监听插件分立，不读 KEYWORD_CHAT_ID）：
-// AUTO_REPLY_CHAT_IDS 显式指定允许自动回复的群（逗号分隔 chat_id）；留空或 '*' = 所有群（审批群始终排除）。
+// AUTO_REPLY_CHAT_IDS 显式指定允许自动回复的群（逗号分隔 chat_id）；留空或 '*' = 所有群。
 // @机器人 / 私聊属于对话回路，不受该范围限制（在 chatService 内命中）。
 function isChatAllowed(chatId) {
   const raw = (config.autoReply.chatIdsRaw || '').trim();
@@ -106,11 +106,7 @@ async function processMessageEvent(event) {
     return { matched: false, reason: '非群聊' };
   }
 
-  // 审批群保持财务专属能力，不做关键词自动回复
-  if (config.approval.chatId && message.chat_id === config.approval.chatId) {
-    return { matched: false, reason: '审批群跳过' };
-  }
-
+  // 全群生效（含财务审批群）：命中即回复；审批群未命中时由 chatService 维持财务引导语
   if (!isChatAllowed(message.chat_id)) {
     return { matched: false, reason: '非目标群' };
   }
