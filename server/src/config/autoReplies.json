@@ -58,11 +58,15 @@
     },
     {
       "keywords": [
-        ""
+        "🐖"
       ],
       "answers": [
         {
           "text": "杨杨文琦",
+          "weight": 1
+        },
+        {
+          "text": "张郭浩",
           "weight": 1
         }
       ]
@@ -75,6 +79,10 @@
         {
           "text": "？",
           "weight": 1
+        },
+        {
+          "text": "！",
+          "weight": 1
         }
       ]
     },
@@ -85,7 +93,11 @@
       "answers": [
         {
           "text": "不叫",
-          "weight": 1
+          "weight": 90
+        },
+        {
+          "text": "叫！！！",
+          "weight": 10
         }
       ]
     }
