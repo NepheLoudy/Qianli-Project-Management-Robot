@@ -331,3 +331,15 @@
 - 隐私整改：关键词回答表支持 `.local.json` 私有覆盖（真实回答不入 git，push.js 显式 SFTP 上 NAS），仓库模板脱敏；`server/.env.example` 与 `config.js` 移除硬编码审批群号（.env 必配）；DEVLOG 人名脱敏
 - `server/.env` 新增 `DUTY_CHAT_ID` / `DUTY_WEBHOOK_URL` / `DUTY_BROADCAST_SCHEDULE`（值日播报 M4 备用，随本批上 NAS）
 - 测试：`server/scripts/stub-test-duty-branch.js` 10 项（占位 duty 服务 + bot 回复捕获），全过
+
+### v66 · 2026-09-11 · 随本提交落地 · fix
+
+**全仓审计 debug 批：/test-ddl 参数错位修复（P1）+ 值日群关键词回答关闭 + 健壮性**
+
+- P1：`handleTestDDLCommand` 签名改为 (args, chatCtx, chatType)——v53 改调用约定时漏改函数签名，导致「非播报群守卫」恒失效（任意群 /test-ddl 都会把测试卡打进 owner 群）、各群补发不等价、工单分栏恒缺
+- 值日专用群（DUTY_CHAT_ID）未@消息的「关键词回答」关闭（isChatAllowed 排除），与 AGENTS「该群仅放行值日助手」声明对齐
+- DDL 确认：p2p 图片消息不再误回「未识别你的回复」，静默交后续链路（值日照片凭证）
+- p2p 值日指令转发透传 messageId（duty-bot 侧做消息幂等）
+- `.env.example` 补 DUTY_SERVICE_URL / DUTY_CHAT_ID / DUTY_WEBHOOK_URL / DUTY_BROADCAST_SCHEDULE
+- quietHours 积压文件支持 QUIET_BACKLOG_FILE 挪出项目目录（SFTP 部署清目录不再丢积压；本次仅加能力，生产路径待运维定）
+- 回归：stub-test-duty-branch 10 项全过

@@ -90,6 +90,8 @@ function displayWeights(answers) {
 // @机器人 / 私聊属于对话回路，不受该范围限制（在 chatService 内命中）。
 // 注意：该范围只作用于「关键词回答」表（未@群消息路径）；「@触发回答」表靠 @ 门禁，全群可用。
 function isChatAllowed(chatId) {
+  // 值日专用群（DUTY_CHAT_ID）：hub 能力整体关闭、仅放行「值日助手」，关键词回答一并排除
+  if (config.duty && config.duty.chatId && chatId === config.duty.chatId) return false;
   const raw = (config.autoReply.chatIdsRaw || '').trim();
   if (!raw || raw === '*') return true;
   const ids = raw.split(',').map(s => s.trim()).filter(Boolean);

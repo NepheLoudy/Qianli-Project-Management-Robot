@@ -175,6 +175,11 @@ async function handleReply(event) {
   if (!reply) {
     // 群聊中保守策略：不回复未识别的消息，避免反复触发
     if (chatType === 'p2p') {
+      // 图片等非文本消息不提示（可能属于其它服务的私聊链路，如值日照片凭证），交后续链路处理
+      const msgType = message.message_type || message.msg_type;
+      if (msgType && msgType !== 'text') {
+        return { handled: false, reason: 'p2p 非文本消息，静默交由后续链路处理' };
+      }
       const pending = pendingList[pendingIndex];
       let tipText = `未识别你的回复。请回复 "是" 或 "否" 来确认项目 "${pending.projectName}" 是否已完成。\n• "是" → 标记为已完成\n• "否" → 保持当前状态`;
       try {

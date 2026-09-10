@@ -154,6 +154,7 @@ async function handleDutyBranch(message, { isGroup, text, senderId }) {
   if (!isGroup && isDutyCommand(text)) {
     const reply = await handleDutyForward({
       command: text, openId: senderId, chatType: 'p2p', chatId: message.chat_id,
+      messageId: message.message_id,
     });
     return { handled: true, reply };
   }
@@ -253,7 +254,7 @@ async function handleStatusCommand() {
   return lines.join('\n');
 }
 
-async function handleTestDDLCommand(chatCtx, chatType) {
+async function handleTestDDLCommand(args, chatCtx, chatType) {
   // 非播报群的群聊里不借用 owner webhook 兜底，避免测试卡跨群打到 owner 群；
   // 私聊（管理员白名单）保留 owner webhook 兜底用于测试
   if (!chatCtx && chatType === 'group') {
