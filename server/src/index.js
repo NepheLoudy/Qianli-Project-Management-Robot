@@ -157,6 +157,16 @@ app.get('/api/autoreplies/config', (req, res) => {
   }
 });
 
+// @触发回答表（仅群里 @机器人 时参与匹配，命中优先级高于 /api/autoreplies/config）
+app.get('/api/autoreplies/mention-config', (req, res) => {
+  try {
+    res.json(autoReplyService.loadMentionRepliesConfig());
+  } catch (err) {
+    console.error('获取@触发回答表失败:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/keywords/records', async (req, res) => {
   try {
     const { pageSize = 100, pageToken = '', hierarchy = 'true' } = req.query;

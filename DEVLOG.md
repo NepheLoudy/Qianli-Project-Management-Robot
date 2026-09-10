@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v62**（2026-09-08，随本提交落地）。
+当前最新：**v64**（2026-09-10，随本提交落地）。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -309,3 +309,13 @@
 - `autoReplyService.processMessageEvent` 移除「审批群跳过」；`chatService` @机器人命中不再因 isApproval 置空——财务审批群内普通消息命中关键词同样自动回复；**指令路由不受影响**：审批群 `/approval-*` 仍整体转发 approval-bot，未命中关键词的对话仍回财务引导语。
 - 范围分立确认（本次未动）：原关键词监听插件（KEYWORD_CHAT_ID=千里论坛 全量写多维表格）、会议提醒、DDL 逾期确认的监听范围逻辑保持原样；`AUTO_REPLY_CHAT_IDS` 留空 = 全群，可收窄。
 - 文档：README §9 生效范围/防干扰改写（审批群不再排除、指令照常）；config.js 注释同步。本地验证：审批群与普通群命中均回复，3/3 通过。
+
+### v64 · 2026-09-10 · 随本提交落地 · feat
+**新增「@触发回答」表：只有群里 @机器人 才命中的第二张关键词表；私聊命中改为只提示面向群聊**
+- 表格：`关键词回答表.xlsx` 新增「@触发回答」工作表（与「关键词回答」同构：关键词｜回答｜概率1-3、`#` 注释行、示例行），表序为 关键词回答 → @触发回答 → 使用说明；「使用说明」追加第 10-12 条（触发条件、命中顺序、私聊口径）。原有工作表数据逐行校验一致。
+- 同步脚本 `scripts/syncAutoReplies.js`：改为「工作表 → JSON」显式映射，同一 xlsx 出两个 JSON——「关键词回答」→ `autoReplies.json`（内容不变）、「@触发回答」→ `autoRepliesMention.json`（新生成物，随仓库提交）；**去掉旧的“回落到第一个工作表”兜底**（三个工作表并存时会把 @触发表静默写进原 JSON）；工作表缺失只记提示跳过，不阻断部署、不动既有 JSON；导出 `syncAutoReplies()`（签名与返回兼容既有调用）+ `syncMentionReplies()` + `syncAllTables()`，CLI 与 push.js [0/4] 均按表逐行打印。
+- `autoReplyService`：新增 `loadMentionRepliesConfig()`（缺文件静默当空表）、`buildMentionReplyForText()`（先 @触发表，命中即止；未命中回落原表；**跨表不合并**）、`hasKeywordHitForText()`（私聊检测用）；`processMessageEvent`（未@群消息路径）**只读原表**——@触发表在未@路径完全不参与。
+- `chatService`：群里 @机器人 走 `buildMentionReplyForText`（命中日志带 `表: mention|group`）；**私聊改为不返回回答内容**——命中任一表只回「⚠️ 关键词自动回复仅面向群聊开放，请在群里 @我 使用。」，未命中仍是欢迎语，私聊指令白名单不变；`/autoreply` 分两段展示两张表（含概率）、`/status` 显示两表条数、`/help` 补一行。
+- 接口：新增 `GET /api/autoreplies/mention-config`；原 `/api/autoreplies/config` 语义与返回不变。
+- 文档：README §5 指令表补 `/autoreply`、§9 改写为双表（入口/命中顺序/私聊口径/双接口/工作表缺失降级）、结构树与 API 表同步、env 样例注明 `AUTO_REPLY_CHAT_IDS` 只作用于原表；`ticket-pm/LOGIC-MAP.md` §2.1 消息管道补上两个自动回复节点（此前完全缺载）。
+- 验证：本地桩测试 31 项断言全过——两表解析 11/2 条；@时同名词取 @触发表那份、未命中回落原表、两表都不命中回欢迎语；未@路径对新表词不命中且不发任何消息、对原表词照旧命中；@触发表词在 `processMessageEvent` 下不命中；私聊命中任一表均只回提示语、未命中回欢迎语；`/autoreply`、`/status` 文案；@触发表 JSON 缺失静默降级并回落原表；工作表缺失时同步记 reason 且不改动既有 JSON。

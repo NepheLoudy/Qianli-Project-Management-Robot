@@ -43,6 +43,7 @@
   - `/status` — 查看服务运行状态
   - `/test-ddl` — 手动触发 DDL 播报测试（与正式播报同内容，可作部分失败后的补发）
   - `/keywords` — 查看关键词配置（仅展示）
+  - `/autoreply` — 查看关键词自动回答表（群消息表 / @触发表两张）
   - `/history` — 查看近期播报历史
   - `/print-*` — 3D 打印指令转发（bambu）
   - `/approval-*` — 财务指令转发（approval-bot；审批群内指令整体切换为财务）
@@ -71,21 +72,25 @@
 - 5 分钟内同一群不重复触发
 
 ### 9. 关键词自动回复（本地回答表）
-- **填写入口：项目根目录 `关键词回答表.xlsx`**（「关键词回答」工作表；详细规则见表内「使用说明」工作表）
+- **填写入口：项目根目录 `关键词回答表.xlsx`**（两个工作表，填写规则完全相同；详细规则见表内「使用说明」工作表）
+  - 「**关键词回答**」工作表 → 群消息（未@机器人）命中即回，同时是 @我 时的**回落表**
+  - 「**@触发回答**」工作表 → **只有群里 @机器人 才会命中**，优先级高于「关键词回答」（先查它，未命中再回落）
   - 「关键词」列：触发词，同义词用逗号/顿号/分号分隔放同一格，`#` 开头行=注释
   - 「回答」列：支持 `/` 分隔**多个候选回复**，触发时按概率加权随机抽一条
   - 「概率1/2/3…」列：回答列右侧顺延，按候选顺序填 **0-100 整数**（总和 100）；留空候选自动均分剩余概率，全留空=等概率，填 0=永不触发，总和超 100 自动按比例压缩（同步时警告）
-- `npm run push` 开头自动把表格转成 `server/src/config/autoReplies.json` 再部署（转换脚本 `scripts/syncAutoReplies.js`，也可 `npm run sync:auto-replies` 只转存不部署）；**JSON 是生成物，勿手改**
+- `npm run push` 开头自动把两个工作表各转成一个 JSON 再部署（`server/src/config/autoReplies.json` 与 `autoRepliesMention.json`；转换脚本 `scripts/syncAutoReplies.js`，也可 `npm run sync:auto-replies` 只转存不部署）；**JSON 是生成物，勿手改**
+  - 工作表按名字精确匹配（不再回落到第一个工作表）；某个工作表不存在时只跳过该表（记提示、不阻断部署、不动既有 JSON）
 - 运行时每次收到消息都重读 JSON，**部署完成后改动即时生效，无需重启**
-- 触发：消息文本**包含**关键词即命中（不分大小写）；一条消息命中多条规则时，每条规则各抽一条回复合并发送
+- 触发：消息文本**包含**关键词即命中（不分大小写）；一张表内命中多条规则时，每条规则各抽一条回复合并发送；跨表不合并——先命中的表胜出
 - 生效范围（与原关键词监听插件**分立**，互不依赖）：
-  - 群消息：**机器人所在的全部群**（含财务审批群）命中即回复；`AUTO_REPLY_CHAT_IDS` 可收窄（逗号分隔 chat_id，留空或 `*` = 所有群）
-  - @机器人 / 私聊提问：不受群范围限制，命中即回答（优先于默认欢迎语；审批群的 `/approval-*` 指令路由不受影响）
-- 指令/接口：`/autoreply` 查看回答表（含概率），`GET /api/autoreplies/config` 读配置；`/keywords` 仍只管原监听插件
+  - 群消息（未@）：只查「关键词回答」表，**机器人所在的全部群**（含财务审批群）命中即回复；`AUTO_REPLY_CHAT_IDS` 可收窄（逗号分隔 chat_id，留空或 `*` = 所有群）
+  - 群里 @机器人：先查「@触发回答」表，未命中回落「关键词回答」表；两表都没命中才回默认欢迎语（审批群的 `/approval-*` 指令路由不受影响）
+  - 私聊：**不返回回答内容**——命中任一表只回「⚠️ 关键词自动回复仅面向群聊开放，请在群里 @我 使用。」；没命中仍是欢迎语（私聊指令白名单不受影响）
+- 指令/接口：`/autoreply` 分两段查看两张表（含概率）；`GET /api/autoreplies/config` 读「关键词回答」表、`GET /api/autoreplies/mention-config` 读「@触发回答」表；`/keywords` 仍只管原监听插件
 - 回复方式：引用回复原消息，失败降级为直接发送
 - 防干扰：其他应用/机器人发出的消息（如 webhook 播报卡片）不触发；指令优先于自动回复（审批群 `/approval-*` 照常转发）
 - 属对话回路（用户消息触发的即时应答），不受晚间静默窗口限制
-- `/status` 显示启用状态与条数
+- `/status` 显示启用状态与两张表的条数
 
 ## 项目结构
 
@@ -116,7 +121,7 @@ project-management-robot/
 │   │   │   ├── projectService.js    # 项目服务（层级 / 4 群过滤）
 │   │   │   ├── logService.js        # 维护日志服务
 │   │   │   ├── keywordService.js    # 关键词监听服务
-│   │   │   ├── autoReplyService.js  # 关键词自动回复服务（autoReplies.json）
+│   │   │   ├── autoReplyService.js  # 关键词自动回复服务（autoReplies.json + autoRepliesMention.json）
 │   │   │   ├── chatService.js       # 对话 / 指令服务
 │   │   │   ├── ddlConfirmService.js # 逾期确认服务
 │   │   │   ├── ticketCloseService.js # 工单分栏取数（主链路 API + 降级直读）
@@ -129,9 +134,9 @@ project-management-robot/
 │   │   └── index.js                 # 入口
 │   ├── package.json
 │   └── .env.example
-├── 关键词回答表.xlsx             # 关键词自动回答填写入口（push 时自动转成 autoReplies.json）
+├── 关键词回答表.xlsx             # 关键词自动回答填写入口（「关键词回答」+「@触发回答」两个工作表，push 时各转一个 JSON）
 ├── scripts/
-│   └── syncAutoReplies.js        # 关键词回答表.xlsx → autoReplies.json 转换脚本
+│   └── syncAutoReplies.js        # 关键词回答表.xlsx → autoReplies(.Mention).json 转换脚本
 ├── push.js                       # 一键部署脚本（Git + NAS）
 ├── auto-deploy.js                # GitHub Actions 时代旧部署脚本（已不用，仅存档）
 └── README.md
@@ -270,7 +275,8 @@ XY_CHAT_ID=xy组群聊ID
 # 关键词监听群聊 ID（该群的全部发言会被记录）
 KEYWORD_CHAT_ID=
 
-# 关键词自动回复监听群范围（未@机器人时生效；逗号分隔，'*' 或留空 = 所有群，与 KEYWORD_CHAT_ID 无关）
+# 关键词回答表的监听群范围（只作用于未@机器人的群消息；逗号分隔，'*' 或留空 = 所有群，与 KEYWORD_CHAT_ID 无关）
+# @触发回答表不读本项：它靠「群里@机器人」这个门禁，全群可用
 # AUTO_REPLY_CHAT_IDS=
 
 # 会议提醒监控群（已不生效：当前实现监听所有群）
@@ -375,7 +381,8 @@ node push.js "提交说明"
 |------|------|------|
 | `/api/keywords/config` | GET | 查看记录配置 |
 | `/api/keywords/records` | GET | 获取记录列表（支持层级） |
-| `/api/autoreplies/config` | GET | 查看关键词自动回答表（独立功能） |
+| `/api/autoreplies/config` | GET | 查看关键词自动回答表（「关键词回答」表，独立功能） |
+| `/api/autoreplies/mention-config` | GET | 查看 @触发回答表（仅群里 @机器人 命中，优先级高于上表） |
 
 ### 维护日志
 | 接口 | 方法 | 说明 |

@@ -45,20 +45,22 @@ if (!nasConfig.host || !nasConfig.password) {
   process.exit(1);
 }
 
-// ============ [0/4] 关键词回答表.xlsx → autoReplies.json 同步 ============
+// ============ [0/4] 关键词回答表.xlsx → autoReplies(.Mention).json 同步 ============
+// 同一 xlsx 的两张工作表（「关键词回答」/「@触发回答」）各转各的 JSON
 try {
-  const { syncAutoReplies } = require('./scripts/syncAutoReplies');
-  const syncResult = syncAutoReplies();
-  if (syncResult.reason) {
-    console.log('ⓘ 关键词回答表：' + syncResult.reason);
-  } else if (syncResult.changed) {
-    console.log(`✓ 关键词回答表 → autoReplies.json 已同步（${syncResult.count} 条规则）`);
-  } else {
-    console.log(`✓ 关键词回答表无变化（当前 ${syncResult.count} 条规则）`);
+  const { syncAllTables } = require('./scripts/syncAutoReplies');
+  for (const r of syncAllTables()) {
+    if (r.reason) {
+      console.log(`ⓘ ${r.label}：${r.reason}`);
+    } else if (r.changed) {
+      console.log(`✓ ${r.label} → ${path.basename(r.jsonPath)} 已同步（${r.count} 条规则）`);
+    } else {
+      console.log(`✓ ${r.label} 无变化（当前 ${r.count} 条规则）`);
+    }
   }
 } catch (err) {
-  // 同步失败不阻断部署，沿用现有 autoReplies.json
-  console.warn('⚠ 关键词回答表同步失败，沿用现有 autoReplies.json:', err.message);
+  // 同步失败不阻断部署，沿用现有 JSON
+  console.warn('⚠ 关键词回答表同步失败，沿用现有 JSON:', err.message);
 }
 
 // ============ [1/4] 代码提交推送到 GitHub ============

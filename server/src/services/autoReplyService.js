@@ -4,13 +4,22 @@ const config = require('../config');
 const keywordService = require('./keywordService');
 const bot = require('../feishu/bot');
 
+// 两张本地回答表（同一份「关键词回答表.xlsx」的两个工作表，由 scripts/syncAutoReplies.js 生成）：
+//   group   「关键词回答」：未@机器人的群消息命中即回（群里 @机器人 时作为回落表）
+//   mention 「@触发回答」：只在群里 @机器人 时参与匹配，优先级高于 group
 const AUTO_REPLIES_CONFIG_PATH = path.join(__dirname, '../config/autoReplies.json');
+const MENTION_REPLIES_CONFIG_PATH = path.join(__dirname, '../config/autoRepliesMention.json');
 
 const processedMessageIds = new Set();
 
-function loadAutoRepliesConfig() {
+/**
+ * 读一张回答表的 JSON
+ * @param {string} configPath
+ * @param {{ silentMissing?: boolean }} [opts] silentMissing：表文件尚未生成时静默当空表（不刷日志）
+ */
+function loadConfigFrom(configPath, opts = {}) {
   try {
-    const data = fs.readFileSync(AUTO_REPLIES_CONFIG_PATH, 'utf-8');
+    const data = fs.readFileSync(configPath, 'utf-8');
     const cfg = JSON.parse(data);
     const replies = Array.isArray(cfg.replies)
       ? cfg.replies.filter(r => {
@@ -25,9 +34,21 @@ function loadAutoRepliesConfig() {
       : [];
     return { enabled: cfg.enabled !== false, replies };
   } catch (err) {
-    console.error('[关键词自动回复] 加载配置失败:', err.message);
+    if (!(err.code === 'ENOENT' && opts.silentMissing)) {
+      console.error('[关键词自动回复] 加载配置失败:', path.basename(configPath), err.message);
+    }
     return { enabled: false, replies: [] };
   }
+}
+
+// 「关键词回答」表（未@机器人 的群消息 + @时的回落表）
+function loadAutoRepliesConfig() {
+  return loadConfigFrom(AUTO_REPLIES_CONFIG_PATH);
+}
+
+// 「@触发回答」表（只在群里 @机器人 时参与匹配）
+function loadMentionRepliesConfig() {
+  return loadConfigFrom(MENTION_REPLIES_CONFIG_PATH, { silentMissing: true });
 }
 
 // 从一条规则的候选回复池中按权重随机抽一条（权重 0 = 不触发；全 0 兜底取第一条）
@@ -60,6 +81,7 @@ function displayWeights(answers) {
 // 群范围（与原关键词监听插件分立，不读 KEYWORD_CHAT_ID）：
 // AUTO_REPLY_CHAT_IDS 显式指定允许自动回复的群（逗号分隔 chat_id）；留空或 '*' = 所有群。
 // @机器人 / 私聊属于对话回路，不受该范围限制（在 chatService 内命中）。
+// 注意：该范围只作用于「关键词回答」表（未@群消息路径）；「@触发回答」表靠 @ 门禁，全群可用。
 function isChatAllowed(chatId) {
   const raw = (config.autoReply.chatIdsRaw || '').trim();
   if (!raw || raw === '*') return true;
@@ -73,23 +95,55 @@ function matchReplies(text, replies) {
   return replies.filter(r => r.keywords.some(kw => lower.includes(String(kw).toLowerCase())));
 }
 
-// 纯匹配（不发送）：@机器人 / 私聊消息在 chatService 内命中时用。
-// 命中多条规则时，每条规则按各自概率抽一条回复，合并成一条（与未@路径一致）
-function buildReplyForText(text) {
-  const { enabled, replies } = loadAutoRepliesConfig();
-  if (!enabled || replies.length === 0) return null;
-
-  const matches = matchReplies(text, replies);
-  if (matches.length === 0) return null;
+/**
+ * 按表顺序匹配（先新表后原表）：第一张命中的表胜出，表内命中多条规则时每条各抽一条合并回复
+ * @param {string} text
+ * @param {Array<{ key: string, config: { enabled: boolean, replies: any[] } }>} tables
+ * @returns {{ text: string, keywords: string[], source: string } | null}
+ */
+function buildReplyFromTables(text, tables) {
+  if (!text) return null;
 
   const lower = text.toLowerCase();
-  return {
-    text: matches.map(m => pickAnswer(m).trim()).filter(Boolean).join('\n\n────────\n\n'),
-    keywords: matches.flatMap(m => m.keywords.filter(kw => lower.includes(String(kw).toLowerCase()))),
-  };
+
+  for (const table of tables) {
+    const cfg = table.config;
+    if (!cfg || !cfg.enabled || cfg.replies.length === 0) continue;
+
+    const matches = matchReplies(text, cfg.replies);
+    if (matches.length === 0) continue;   // 本表未命中 → 继续查下一张
+
+    return {
+      text: matches.map(m => pickAnswer(m).trim()).filter(Boolean).join('\n\n────────\n\n'),
+      keywords: matches.flatMap(m => m.keywords.filter(kw => lower.includes(String(kw).toLowerCase()))),
+      source: table.key,
+    };
+  }
+
+  return null;
 }
 
-// 未@机器人的群聊消息入口（@机器人/私聊的命中在 chatService 内处理，避免双重回复）
+// 纯匹配（不发送）：只查「关键词回答」表
+function buildReplyForText(text) {
+  return buildReplyFromTables(text, [{ key: 'group', config: loadAutoRepliesConfig() }]);
+}
+
+// 群里 @机器人 时的匹配：先「@触发回答」，未命中再回落「关键词回答」
+function buildMentionReplyForText(text) {
+  return buildReplyFromTables(text, [
+    { key: 'mention', config: loadMentionRepliesConfig() },
+    { key: 'group', config: loadAutoRepliesConfig() },
+  ]);
+}
+
+// 私聊用：任一表命中即视为命中（只提示该功能面向群聊，不返回回答内容）
+function hasKeywordHitForText(text) {
+  if (!text) return false;
+  return [loadMentionRepliesConfig(), loadAutoRepliesConfig()]
+    .some(cfg => cfg.enabled && cfg.replies.length > 0 && matchReplies(text, cfg.replies).length > 0);
+}
+
+// 未@机器人的群聊消息入口：只查「关键词回答」表（「@触发回答」必须在群里 @ 才生效）
 async function processMessageEvent(event) {
   const message = event.message;
   if (!message) {
@@ -150,9 +204,12 @@ async function processMessageEvent(event) {
 
 module.exports = {
   loadAutoRepliesConfig,
+  loadMentionRepliesConfig,
   matchReplies,
   pickAnswer,
   displayWeights,
   buildReplyForText,
+  buildMentionReplyForText,
+  hasKeywordHitForText,
   processMessageEvent,
 };

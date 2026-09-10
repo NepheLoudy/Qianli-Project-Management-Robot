@@ -123,12 +123,14 @@ async function handleHelpCommand() {
   • 群聊中请先 @${botName} 再发送指令
   • 示例：@${botName} /help
   • 示例：@${botName} /print-status
-  • 群内消息命中关键词回答表会自动回复（/autoreply 查看）`;
+  • 群内消息命中「关键词回答」表会自动回复（无需@，/autoreply 查看）
+  • 群里 @我 时优先命中「@触发回答」表，未命中回落「关键词回答」表（/autoreply 查看）`;
 }
 
 async function handleStatusCommand() {
   const keywordsConfig = keywordService.loadKeywordsConfig();
   const autoRepliesConfig = autoReplyService.loadAutoRepliesConfig();
+  const mentionRepliesConfig = autoReplyService.loadMentionRepliesConfig();
   const botName = config.bot.name;
 
   const lines = [
@@ -141,7 +143,8 @@ async function handleStatusCommand() {
     ``,
     `📋 关键词监听：${keywordsConfig.enabled ? '✅ 已启用' : '❌ 未启用'}`,
     `   监听关键词数量：${keywordsConfig.keywords.length} 个`,
-    `💬 关键词自动回复：${autoRepliesConfig.enabled ? `✅ 已启用（回答表 ${autoRepliesConfig.replies.length} 条）` : '❌ 未启用'}`,
+    `💬 关键词自动回复：${autoRepliesConfig.enabled ? `✅ 已启用（群消息表 ${autoRepliesConfig.replies.length} 条 / @触发表 ${mentionRepliesConfig.replies.length} 条）` : '❌ 未启用'}`,
+    `   （@触发表仅在群里 @机器人 时生效；私聊命中只提示到群里使用）`,
     ``,
     `⏰ 定时任务：`,
     `   DDL播报：${config.cron.schedule} (Asia/Shanghai)`,
@@ -231,18 +234,26 @@ async function handleKeywordsCommand() {
 
 async function handleAutoReplyCommand() {
   const autoRepliesConfig = autoReplyService.loadAutoRepliesConfig();
+  const mentionRepliesConfig = autoReplyService.loadMentionRepliesConfig();
 
-  if (!autoRepliesConfig.enabled) {
+  if (!autoRepliesConfig.enabled && !mentionRepliesConfig.enabled) {
     return '💬 关键词自动回复：未启用';
   }
 
   const lines = [];
 
-  if (autoRepliesConfig.replies.length === 0) {
-    lines.push('💬 关键词自动回复：已启用（回答表为空）');
-  } else {
-    lines.push(`💬 关键词自动回复：已启用 (${autoRepliesConfig.replies.length}条)，命中即自动回答：`);
-    autoRepliesConfig.replies.forEach((r, i) => {
+  // 与 /status、autoReplyService 的口径一致：一张工作表一段
+  const appendTable = (title, cfg) => {
+    if (!cfg.enabled) {
+      lines.push(`${title}：未启用`);
+      return;
+    }
+    if (cfg.replies.length === 0) {
+      lines.push(`${title}：已启用（表为空）`);
+      return;
+    }
+    lines.push(`${title}：已启用 (${cfg.replies.length}条)`);
+    cfg.replies.forEach((r, i) => {
       const answers = Array.isArray(r.answers) && r.answers.length
         ? r.answers
         : [{ text: r.answer, weight: 1 }];
@@ -254,10 +265,15 @@ async function handleAutoReplyCommand() {
       }).join(' / ');
       lines.push(`  ${i + 1}. [${r.keywords.join('/')}] → ${pool.slice(0, 50)}${pool.length > 50 ? '…' : ''}`);
     });
-  }
+  };
 
+  appendTable('💬 ① 群消息命中即回（无需@，「关键词回答」表）', autoRepliesConfig);
   lines.push('');
-  lines.push('提示：修改 关键词回答表.xlsx 后 npm run push 同步部署（无需重启服务）');
+  appendTable('🎯 ② 仅群里 @机器人 触发（「@触发回答」表）', mentionRepliesConfig);
+  lines.push('');
+  lines.push('@我时的命中顺序：先查②，未命中再查①；两表都没命中才回默认欢迎语');
+  lines.push('私聊不返回回答内容，命中也只提示到群里使用');
+  lines.push('提示：修改 关键词回答表.xlsx 的对应工作表后 npm run push 同步部署（无需重启服务）');
 
   return lines.join('\n');
 }
@@ -412,12 +428,17 @@ async function processChatMessage(event) {
       }
     }
   } else {
-    // 关键词自动回复：@机器人/私聊消息命中本地回答表时直接回答，优先于默认欢迎语
-    // （全群生效含审批群；审批群指令路由 /approval-* 不受影响，未命中仍回财务引导语）
-    const autoHit = autoReplyService.buildReplyForText(text);
+    // 关键词自动回复（优先于默认欢迎语）：
+    //   群内 @机器人 → 先查「@触发回答」表，未命中回落「关键词回答」表
+    //   私聊 → 不返回回答内容，命中任一表只提示该功能面向群聊（指令白名单不受影响）
+    const autoHit = isGroup ? autoReplyService.buildMentionReplyForText(text) : null;
+
     if (autoHit) {
-      console.log('[对话服务] 关键词自动回复命中:', autoHit.keywords.join('/'));
+      console.log('[对话服务] 关键词自动回复命中:', autoHit.keywords.join('/'), `(表: ${autoHit.source})`);
       replyText = autoHit.text;
+    } else if (!isGroup && autoReplyService.hasKeywordHitForText(text)) {
+      console.log('[对话服务] 私聊命中关键词，提示仅面向群聊');
+      replyText = '⚠️ 关键词自动回复仅面向群聊开放，请在群里 @我 使用。';
     } else {
       replyText = await handleNormalChat(senderName, message.chat_id);
     }
