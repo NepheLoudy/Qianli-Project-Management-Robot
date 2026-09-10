@@ -217,8 +217,23 @@ function uploadEnv() {
         process.exit(1);
       }
       console.log('✓ server/.env 已上传到 NAS（含飞书密钥，仅存于 NAS）');
-      restart();
+      uploadPrivateConfigs(sftp);
     });
+  });
+}
+
+// 关键词回答私有覆盖（含真实成员姓名，不进 git；git 路径部署仓库里没有，必须显式 SFTP）
+function uploadPrivateConfigs(sftp) {
+  const localPath = path.join(__dirname, 'server', 'src', 'config', 'autoReplies.local.json');
+  if (!require('fs').existsSync(localPath)) return restart();
+  sftp.fastPut(localPath, REMOTE_DIR + '/server/src/config/autoReplies.local.json', (err2) => {
+    if (err2) {
+      console.error('autoReplies.local.json 上传失败:', err2.message);
+      conn.end();
+      process.exit(1);
+    }
+    console.log('✓ autoReplies.local.json 已上传到 NAS（私有回答表，仅存于 NAS）');
+    restart();
   });
 }
 

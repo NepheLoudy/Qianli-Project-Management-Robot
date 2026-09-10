@@ -77,6 +77,91 @@ function isP2pCommandAllowed(senderId, chatId) {
 }
 
 /**
+ * 是否值日专用群（快递申领群）：hub 基础指令/对话全部关闭，仅放行「值日助手」
+ */
+function isDutyGroup(chatId) {
+  return !!config.duty.chatId && chatId === config.duty.chatId;
+}
+
+// 值日私信指令（精确匹配；绑定 姓名为前缀指令）——先于私聊指令白名单放行，
+// 否则名册成员未进 P2P 白名单时 无法绑定/请假/打卡
+function isDutyCommand(text) {
+  if (!text) return false;
+  const exact = ['值日助手', '我要请假', '查询我的下一次值日', '是', '否', '生成排班表'];
+  return exact.includes(text) || text.startsWith('绑定');
+}
+
+/**
+ * 转发值日载荷到 duty-bot（approval-bot 同款转发契约，另带身份字段）
+ * 返回 duty-bot 的 reply；空串表示其已自行处理（如群看板卡片），无需再回复
+ */
+async function handleDutyForward(payload) {
+  try {
+    const res = await fetch(`${config.duty.serviceUrl}/api/chat/command`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      throw new Error(`值日服务响应失败: ${res.status}`);
+    }
+    const data = await res.json();
+    return data.reply || '';
+  } catch (err) {
+    console.error('[对话服务] 调用值日服务失败:', err.message);
+    return '❌ 值日服务暂不可用，请稍后再试';
+  }
+}
+
+/**
+ * 值日域分支（先于其它能力处理）：
+ *  ① p2p 图片 → 最小转发 {type:'image'}（duty-bot 自行下载转存，hub 不做转存）
+ *  ② 值日专用群 → 仅放行「值日助手」看板，其余 hub 能力一律关闭
+ *  ③ p2p 值日指令 → 转发（不受 P2P 指令白名单限制，名册成员人人可用）
+ * @returns {{handled: boolean, reply: string}}
+ */
+async function handleDutyBranch(message, { isGroup, text, senderId }) {
+  // ① p2p 图片：值日照片凭证直传
+  if (!isGroup) {
+    const msgType = message.message_type || message.msg_type;
+    if (msgType === 'image') {
+      const imageKeys = keywordService.extractImageKeys(message);
+      if (imageKeys.length > 0) {
+        const reply = await handleDutyForward({
+          type: 'image', openId: senderId, imageKey: imageKeys[0], messageId: message.message_id,
+        });
+        return { handled: true, reply };
+      }
+      return { handled: false, reply: '' };
+    }
+  }
+
+  // ② 值日专用群：仅「值日助手」
+  if (isGroup && isDutyGroup(message.chat_id)) {
+    if (text === '值日助手') {
+      const reply = await handleDutyForward({
+        command: '值日助手', openId: senderId, chatType: 'group', chatId: message.chat_id,
+      });
+      return { handled: true, reply };
+    }
+    return {
+      handled: true,
+      reply: '🧹 本群仅开放「值日助手」看板：@我 发送「值日助手」查看今日值日\n（查询排班、请假、打卡确认请私信机器人）',
+    };
+  }
+
+  // ③ p2p 值日指令
+  if (!isGroup && isDutyCommand(text)) {
+    const reply = await handleDutyForward({
+      command: text, openId: senderId, chatType: 'p2p', chatId: message.chat_id,
+    });
+    return { handled: true, reply };
+  }
+
+  return { handled: false, reply: '' };
+}
+
+/**
  * 转发 /approval-* 指令到 approval-bot（bambu 打印服务同款转发契约）
  */
 async function handleApprovalCommand(command, args) {
@@ -118,6 +203,13 @@ async function handleHelpCommand() {
   /print-status   查看打印机状态
   /print-list     查看预约列表
   /print-pending  查看待审批预约
+
+值日指令（转发 duty-bot；群内「值日助手」= 今日看板）：
+  值日助手            私信发=用法说明
+  查询我的下一次值日  下次值日日期与岗位
+  我要请假            登记请假（下周自动补插一次）
+  绑定 姓名           首次使用绑定账号
+  生成排班表          管理员私信可用
 
 使用方式：
   • 群聊中请先 @${botName} 再发送指令
@@ -394,6 +486,26 @@ async function processChatMessage(event) {
   const isApproval = isApprovalGroup(message.chat_id);
 
   let replyText = '';
+
+  // 值日域分支：p2p 图片/值日指令（不受私聊指令白名单限制）、值日专用群看板
+  const dutyResult = await handleDutyBranch(message, { isGroup, text, senderId });
+  if (dutyResult.handled) {
+    console.log('[对话服务] 值日分支已处理:', isGroup ? '群看板/限制' : 'p2p 指令/图片');
+    if (dutyResult.reply) {
+      try {
+        await bot.replyTextMessage(message.message_id, dutyResult.reply);
+      } catch (err) {
+        console.error('[对话服务] 值日分支回复失败:', err.message);
+      }
+    }
+    return {
+      handled: true,
+      isCommand: true,
+      command: 'duty',
+      senderId,
+      chatId: message.chat_id,
+    };
+  }
 
   const cmd = parseCommand(text);
   if (cmd) {

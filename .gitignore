@@ -18,3 +18,6 @@ build/
 
 # Excel 打开工作簿时生成的锁文件（~$xxx.xlsx），勿提交
 ~$*
+
+# 关键词回答私有覆盖（可含真实成员姓名，仓库只进脱敏模板 autoReplies.json）
+server/src/config/autoReplies.local.json

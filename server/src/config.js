@@ -70,8 +70,15 @@ module.exports = {
   // 审批群（approval-bot 服务）：本群指令能力整体切换为财务相关，
   // /approval-* 指令转发给 approval-bot 处理
   approval: {
-    chatId: process.env.APPROVAL_CHAT_ID || 'oc_1ea53731a8772400450da6ab107f8331',
+    // 审批群 id 只存 .env（不硬编码进仓库）
+    chatId: process.env.APPROVAL_CHAT_ID || '',
     serviceUrl: process.env.APPROVAL_SERVICE_URL || 'http://localhost:3002',
+  },
+  duty: {
+    // 值日服务（duty-bot :3006）：值日指令/图片转发；chatId 即值日专用群
+    //（快递申领群：本群 hub 基础指令全部关闭，仅放行「值日助手」看板）
+    serviceUrl: process.env.DUTY_SERVICE_URL || 'http://localhost:3006',
+    chatId: process.env.DUTY_CHAT_ID || '',
   },
   meeting: {
     chatIds: process.env.MEETING_CHAT_IDS ? process.env.MEETING_CHAT_IDS.split(',') : [],

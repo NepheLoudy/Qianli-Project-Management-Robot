@@ -10,6 +10,13 @@ const bot = require('../feishu/bot');
 const AUTO_REPLIES_CONFIG_PATH = path.join(__dirname, '../config/autoReplies.json');
 const MENTION_REPLIES_CONFIG_PATH = path.join(__dirname, '../config/autoRepliesMention.json');
 
+// 隐私约定：同名 .local.json（gitignore，可含真实成员姓名等隐私回答）存在则优先加载，
+// 仓库只进脱敏模板；NAS 由 push.js 显式上传 .local.json（git 路径部署仓库里没有它）
+function resolveConfigPath(configPath) {
+  const localPath = configPath.replace(/\.json$/, '.local.json');
+  return fs.existsSync(localPath) ? localPath : configPath;
+}
+
 const processedMessageIds = new Set();
 
 /**
@@ -43,12 +50,12 @@ function loadConfigFrom(configPath, opts = {}) {
 
 // 「关键词回答」表（未@机器人 的群消息 + @时的回落表）
 function loadAutoRepliesConfig() {
-  return loadConfigFrom(AUTO_REPLIES_CONFIG_PATH);
+  return loadConfigFrom(resolveConfigPath(AUTO_REPLIES_CONFIG_PATH));
 }
 
 // 「@触发回答」表（只在群里 @机器人 时参与匹配）
 function loadMentionRepliesConfig() {
-  return loadConfigFrom(MENTION_REPLIES_CONFIG_PATH, { silentMissing: true });
+  return loadConfigFrom(resolveConfigPath(MENTION_REPLIES_CONFIG_PATH), { silentMissing: true });
 }
 
 // 从一条规则的候选回复池中按权重随机抽一条（权重 0 = 不触发；全 0 兜底取第一条）

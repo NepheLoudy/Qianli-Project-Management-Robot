@@ -38,7 +38,7 @@
 ### v49 · 2026-09-05 · docs（随本提交落地，无独立哈希） · feat
 **指令仅群内触发；私聊指令仅管理员白名单可用（对话枢纽统一门禁）**
 - `server/src/services/chatService.js`：私聊（p2p）收到 / 指令时先过白名单（`P2P_COMMAND_OPEN_IDS`/`P2P_COMMAND_CHAT_IDS`，sender open_id 与 p2p chat_id 任一命中），未命中回复「指令仅支持在群聊中 @机器人 使用」；群聊照旧（@机器人门禁 + 回复到来源群）；私聊普通对话不受限。
-- `server/src/config.js` 新增 `p2pCommandAllow` 白名单配置；`.env.example` 补充说明；本地 .env 已配置管理员 open_id（张国皓 ou_249993fe…，经 git 提交邮箱手机号反查飞书账号确认）。
+- `server/src/config.js` 新增 `p2pCommandAllow` 白名单配置；`.env.example` 补充说明；本地 .env 已配置管理员 open_id。
 - /approval-* 与 /print-* 指令由此在转发前统一收口，approval-bot / bambu 的 `/api/chat/command` 契约不变。
 - 同批补交 v48 建档条目（昨日「当前最新」头部与阶段七段落遗留未提交）。
 
@@ -321,3 +321,13 @@
 - 验证：本地桩测试 31 项断言全过——两表解析 11/2 条；@时同名词取 @触发表那份、未命中回落原表、两表都不命中回欢迎语；未@路径对新表词不命中且不发任何消息、对原表词照旧命中；@触发表词在 `processMessageEvent` 下不命中；私聊命中任一表均只回提示语、未命中回欢迎语；`/autoreply`、`/status` 文案；@触发表 JSON 缺失静默降级并回落原表；工作表缺失时同步记 reason 且不改动既有 JSON。
 - 随本批补交：`关键词回答表.xlsx` 新增「@触发回答」工作表（同样式副本：标题字体/表头填充/列宽/合并保留，正文在 B 列起），「使用说明」补第 10-12 条；写入用 openpyxl，保存后追加一步把各 XML 部件的非 ASCII 数字实体还原成 UTF-8 原文——**openpyxl 会把所有非 ASCII 写成 `&#N;`，而同步脚本用的 SheetJS 解析星平面字符（emoji 如 🐖）会读成空串，会让规则静默失效**；写入前后逐格比对（含坐标）一致，重写后解析结果与原件逐字节一致，🐖 规则完好。不用其它工具随意重写本工作簿。
 - 部署后补记：本次 push 时 GitHub 不可达（`Failed to connect to github.com:443`），NAS 侧走 SFTP 直传兜底（NAS git HEAD 停在上一提交，内容一致）；后经 Watt Toolkit 加速恢复可达后补推成功。
+
+### v65 · 2026-09-11 · 随本提交落地 · feat
+
+**hub 值日分支（duty-bot :3006 联动）+ 值日专用群限制 + 隐私整改**
+
+- `chatService.handleDutyBranch`（先于其它能力）：① p2p 图片最小转发 `{type:'image', openId, imageKey, messageId}`（duty-bot 自行下载转存）② 值日专用群（`DUTY_CHAT_ID`，快递申领群）hub 基础指令与对话整体关闭、仅放行「值日助手」看板 ③ p2p 值日指令（值日助手/我要请假/查询我的下一次值日/绑定 X/是/否/生成排班表）**不受 P2P 指令白名单限制**放行（名册成员人人可用）
+- `config.duty`：serviceUrl（DUTY_SERVICE_URL，默认 :3006）+ chatId（DUTY_CHAT_ID，兼播报目标群）；/help 补值日指令段
+- 隐私整改：关键词回答表支持 `.local.json` 私有覆盖（真实回答不入 git，push.js 显式 SFTP 上 NAS），仓库模板脱敏；`server/.env.example` 与 `config.js` 移除硬编码审批群号（.env 必配）；DEVLOG 人名脱敏
+- `server/.env` 新增 `DUTY_CHAT_ID` / `DUTY_WEBHOOK_URL` / `DUTY_BROADCAST_SCHEDULE`（值日播报 M4 备用，随本批上 NAS）
+- 测试：`server/scripts/stub-test-duty-branch.js` 10 项（占位 duty 服务 + bot 回复捕获），全过
