@@ -319,3 +319,5 @@
 - 接口：新增 `GET /api/autoreplies/mention-config`；原 `/api/autoreplies/config` 语义与返回不变。
 - 文档：README §5 指令表补 `/autoreply`、§9 改写为双表（入口/命中顺序/私聊口径/双接口/工作表缺失降级）、结构树与 API 表同步、env 样例注明 `AUTO_REPLY_CHAT_IDS` 只作用于原表；`ticket-pm/LOGIC-MAP.md` §2.1 消息管道补上两个自动回复节点（此前完全缺载）。
 - 验证：本地桩测试 31 项断言全过——两表解析 11/2 条；@时同名词取 @触发表那份、未命中回落原表、两表都不命中回欢迎语；未@路径对新表词不命中且不发任何消息、对原表词照旧命中；@触发表词在 `processMessageEvent` 下不命中；私聊命中任一表均只回提示语、未命中回欢迎语；`/autoreply`、`/status` 文案；@触发表 JSON 缺失静默降级并回落原表；工作表缺失时同步记 reason 且不改动既有 JSON。
+- 随本批补交：`关键词回答表.xlsx` 新增「@触发回答」工作表（同样式副本：标题字体/表头填充/列宽/合并保留，正文在 B 列起），「使用说明」补第 10-12 条；写入用 openpyxl，保存后追加一步把各 XML 部件的非 ASCII 数字实体还原成 UTF-8 原文——**openpyxl 会把所有非 ASCII 写成 `&#N;`，而同步脚本用的 SheetJS 解析星平面字符（emoji 如 🐖）会读成空串，会让规则静默失效**；写入前后逐格比对（含坐标）一致，重写后解析结果与原件逐字节一致，🐖 规则完好。不用其它工具随意重写本工作簿。
+- 部署后补记：本次 push 时 GitHub 不可达（`Failed to connect to github.com:443`），NAS 侧走 SFTP 直传兜底（NAS git HEAD 停在上一提交，内容一致）；后经 Watt Toolkit 加速恢复可达后补推成功。
