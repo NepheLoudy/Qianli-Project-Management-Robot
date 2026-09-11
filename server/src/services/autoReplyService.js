@@ -152,6 +152,85 @@ function hasKeywordHitForText(text) {
     .some(cfg => cfg.enabled && cfg.replies.length > 0 && matchReplies(text, cfg.replies).length > 0);
 }
 
+// ===== 定制窗口（顶层 AGENTS「机器人后端定制窗口」）：回答表读写出口 =====
+// 写入目标优先 .local.json（运行时隐私层；运行时每消息重读，改动即时生效）。
+// 注意：npm run push 会用本地 .local.json 覆盖 NAS 同名文件——批量持久编辑仍以本地 xlsx 为准，
+// 窗口改动如需保留，push 前用 GET /api/autoreplies/rules 取回回填本地。
+
+function rulesFilePath(table) {
+  const base = table === 'mention' ? MENTION_REPLIES_CONFIG_PATH : AUTO_REPLIES_CONFIG_PATH;
+  return resolveConfigPath(base);
+}
+
+function normalizeRuleInput(rule) {
+  const keywords = (Array.isArray(rule?.keywords) ? rule.keywords : String(rule?.keywords || '').split(/[,，、]/))
+    .map((k) => String(k).trim()).filter(Boolean);
+  if (keywords.length === 0) throw new Error('关键词不能为空');
+  let answers;
+  if (Array.isArray(rule?.answers) && rule.answers.length > 0) {
+    answers = rule.answers
+      .map((a) => ({ text: String(a.text ?? '').trim(), weight: Number.parseInt(a.weight, 10) > 0 ? Number.parseInt(a.weight, 10) : 1 }))
+      .filter((a) => a.text);
+  } else if (typeof rule?.answersText === 'string' && rule.answersText.trim()) {
+    // 窗口便捷格式：每行一条 `回答|权重`（权重可省，默认 1）
+    answers = rule.answersText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+      .map((l) => {
+        const [text, w] = l.split('|');
+        return { text: text.trim(), weight: Number.parseInt(w, 10) > 0 ? Number.parseInt(w, 10) : 1 };
+      });
+  } else if (typeof rule?.answer === 'string' && rule.answer.trim()) {
+    answers = [{ text: rule.answer.trim(), weight: 1 }];
+  }
+  if (!answers || answers.length === 0) throw new Error('回答不能为空（answers 数组 / answersText 每行一条 / answer 字符串）');
+  return { keywords, answers };
+}
+
+function ruleKey(keywords) {
+  return keywords.map((k) => String(k).toLowerCase()).sort().join('|');
+}
+
+/** 读一张表的规则全景（file = 当前生效文件名，.local.json 优先） */
+function getRules(table) {
+  const cfg = loadConfigFrom(rulesFilePath(table));
+  return { table, file: path.basename(rulesFilePath(table)), enabled: cfg.enabled, replies: cfg.replies };
+}
+
+function saveRules(table, replies, enabled) {
+  const base = table === 'mention' ? MENTION_REPLIES_CONFIG_PATH : AUTO_REPLIES_CONFIG_PATH;
+  const localPath = base.replace(/\.json$/, '.local.json');
+  fs.writeFileSync(localPath, JSON.stringify({ enabled: enabled !== false, replies }, null, 2));
+  console.log(`[关键词自动回复] 定制窗口写回 ${path.basename(localPath)}：${replies.length} 条规则`);
+  return getRules(table);
+}
+
+/** 新增/更新规则（按关键词组整体匹配，忽略大小写与顺序） */
+function upsertRule(table, rule) {
+  const norm = normalizeRuleInput(rule);
+  const current = getRules(table);
+  const replies = current.replies.slice();
+  const key = ruleKey(norm.keywords);
+  const idx = replies.findIndex((r) => ruleKey(r.keywords) === key);
+  if (idx >= 0) replies[idx] = norm; else replies.push(norm);
+  return saveRules(table, replies, current.enabled);
+}
+
+/** 删除规则（keywords 传该规则任一/全部关键词组） */
+function deleteRule(table, keywords) {
+  const list = (Array.isArray(keywords) ? keywords : String(keywords).split(/[,，、]/)).map((k) => String(k).trim()).filter(Boolean);
+  if (list.length === 0) throw new Error('keywords 不能为空');
+  const current = getRules(table);
+  const key = ruleKey(list);
+  const replies = current.replies.filter((r) => ruleKey(r.keywords) !== key);
+  if (replies.length === current.replies.length) throw new Error('未找到该关键词组对应的规则');
+  return saveRules(table, replies, current.enabled);
+}
+
+/** 启停整张表 */
+function setTableEnabled(table, enabled) {
+  const current = getRules(table);
+  return saveRules(table, current.replies, enabled !== false);
+}
+
 // 未@机器人的群聊消息入口：只查「关键词回答」表（「@触发回答」必须在群里 @ 才生效）
 async function processMessageEvent(event) {
   const message = event.message;
@@ -227,4 +306,8 @@ module.exports = {
   buildMentionReplyForText,
   hasKeywordHitForText,
   processMessageEvent,
+  getRules,
+  upsertRule,
+  deleteRule,
+  setTableEnabled,
 };

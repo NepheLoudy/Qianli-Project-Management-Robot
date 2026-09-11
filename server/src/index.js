@@ -187,6 +187,41 @@ app.get('/api/autoreplies/mention-config', (req, res) => {
   }
 });
 
+// 定制窗口：关键词回答表 CRUD（顶层 AGENTS「机器人后端定制窗口」；运行时每消息重读，改动即时生效。
+// 写入 .local.json；npm run push 会以本地版本覆盖，持久化批量编辑仍以本地 xlsx 为准）
+const normTable = (t) => (t === 'mention' ? 'mention' : 'group');
+
+app.get('/api/autoreplies/rules', (req, res) => {
+  res.json(autoReplyService.getRules(normTable(req.query.table)));
+});
+
+app.post('/api/autoreplies/rules', (req, res) => {
+  try {
+    const { table, rule } = req.body || {};
+    res.json({ ok: true, result: autoReplyService.upsertRule(normTable(table), rule) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/autoreplies/rules/delete', (req, res) => {
+  try {
+    const { table, keywords } = req.body || {};
+    res.json({ ok: true, result: autoReplyService.deleteRule(normTable(table), keywords) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/autoreplies/enabled', (req, res) => {
+  try {
+    const { table, enabled } = req.body || {};
+    res.json({ ok: true, result: autoReplyService.setTableEnabled(normTable(table), enabled) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 app.get('/api/keywords/records', async (req, res) => {
   try {
     const { pageSize = 100, pageToken = '', hierarchy = 'true' } = req.query;
