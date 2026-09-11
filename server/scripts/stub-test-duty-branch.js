@@ -1,7 +1,7 @@
 /**
  * hub 值日分支 stub 测试（不触飞书：mock bot 回复捕获 + 本地占位 duty 服务）
- * 覆盖：值日专用群仅放行「值日助手」、p2p 值日指令放行（绕过私聊白名单）、
- *      p2p 图片最小转发、非值日能力不受影响。
+ * 覆盖：值日专用群放行「值日助手」看板与关键词回答（@与未@，基础指令仍关闭）、
+ *      p2p 值日指令放行（绕过私聊白名单）、p2p 图片最小转发、非值日能力不受影响。
  * 运行：node scripts/stub-test-duty-branch.js
  */
 const http = require('http');
@@ -34,6 +34,7 @@ require.cache[require.resolve('../src/feishu/bot')] = {
 };
 
 const chatService = require('../src/services/chatService');
+const autoReplyService = require('../src/services/autoReplyService');
 const config = require('../src/config');
 
 let failed = 0;
@@ -79,13 +80,35 @@ function p2pEvent(text, msgId, extra = {}) {
   check('值日群「值日助手」→ 转发群看板载荷', captured.dutyPayloads.some((p) => p.command === '值日助手' && p.chatType === 'group' && p.chatId === 'oc_duty_group_test'));
   check('值日群「值日助手」→ 回执已回复', captured.botReplies.some((r) => r.messageId === 'm1' && r.text.includes('占位回执')));
 
-  // ② 值日专用群：基础指令被拒
+  // ② 值日专用群：基础指令仍被拒（值日群引导语）
   await chatService.processChatMessage(groupEvent('/help', 'm2'));
-  check('值日群「/help」→ 仅放行提示', captured.botReplies.some((r) => r.messageId === 'm2' && r.text.includes('本群仅开放「值日助手」')));
+  check('值日群「/help」→ 值日群引导语', captured.botReplies.some((r) => r.messageId === 'm2' && r.text.includes('值日/快递申领专用群')));
+  check('值日群「/help」未返回帮助内容', !captured.botReplies.some((r) => r.messageId === 'm2' && r.text.includes('可用指令')));
 
-  // ③ 值日专用群：普通对话也被拒（hub 能力整体关闭）
+  // ③ 值日专用群：未命中关键词的普通对话 → 引导语（不进欢迎语流程）
   await chatService.processChatMessage(groupEvent('你好呀', 'm3'));
-  check('值日群普通对话 → 仅放行提示', captured.botReplies.some((r) => r.messageId === 'm3' && r.text.includes('本群仅开放「值日助手」')));
+  check('值日群普通对话 → 值日群引导语', captured.botReplies.some((r) => r.messageId === 'm3' && r.text.includes('值日/快递申领专用群')));
+
+  // ③′ 值日专用群：@ 关键词命中 → 关键词回答放行（不转发 duty、非引导语）
+  await chatService.processChatMessage(groupEvent('大狗大狗请叫叫', 'm3k'));
+  const m3k = captured.botReplies.find((r) => r.messageId === 'm3k');
+  check('值日群 @关键词 → 关键词回答（非引导语）', !!m3k && !m3k.text.includes('值日/快递申领专用群') && !m3k.text.includes('占位回执'), m3k && m3k.text);
+  check('值日群 @关键词 未被转发到值日服务', !captured.dutyPayloads.some((p) => (p.command || '').includes('大狗')));
+
+  // ③″ 值日专用群：未@消息关键词命中 → 照常自动回答
+  const unmentioned = {
+    message: {
+      message_id: 'm3u',
+      message_type: 'text',
+      chat_type: 'group',
+      chat_id: 'oc_duty_group_test',
+      content: JSON.stringify({ text: '小狗小狗' }),
+    },
+    sender: { sender_id: { open_id: 'ou_member_1' }, sender_type: 'user' },
+  };
+  const autoResult = await autoReplyService.processMessageEvent(unmentioned);
+  check('值日群未@关键词 → 自动回答命中', autoResult.matched === true, JSON.stringify(autoResult));
+  check('值日群未@关键词 → 已回复', captured.botReplies.some((r) => r.messageId === 'm3u' && r.text.length > 0));
 
   // ④ p2p 值日指令：绕过私聊白名单
   for (const t of ['值日助手', '我要请假', '查询我的下一次值日', '是', '否', '生成排班表', '绑定 队员C']) {

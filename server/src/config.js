@@ -76,7 +76,7 @@ module.exports = {
   },
   duty: {
     // 值日服务（duty-bot :3006）：值日指令/图片转发；chatId 即值日专用群
-    //（快递申领群：本群 hub 基础指令全部关闭，仅放行「值日助手」看板）
+    //（快递申领群：hub 基础指令关闭，放行「值日助手」看板与关键词回答）
     serviceUrl: process.env.DUTY_SERVICE_URL || 'http://localhost:3006',
     chatId: process.env.DUTY_CHAT_ID || '',
   },

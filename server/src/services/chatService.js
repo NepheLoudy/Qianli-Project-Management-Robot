@@ -77,7 +77,7 @@ function isP2pCommandAllowed(senderId, chatId) {
 }
 
 /**
- * 是否值日专用群（快递申领群）：hub 基础指令/对话全部关闭，仅放行「值日助手」
+ * 是否值日专用群（快递申领群）：hub 基础指令关闭，放行「值日助手」看板与关键词回答
  */
 function isDutyGroup(chatId) {
   return !!config.duty.chatId && chatId === config.duty.chatId;
@@ -116,7 +116,7 @@ async function handleDutyForward(payload) {
 /**
  * 值日域分支（先于其它能力处理）：
  *  ① p2p 图片 → 最小转发 {type:'image'}（duty-bot 自行下载转存，hub 不做转存）
- *  ② 值日专用群 → 仅放行「值日助手」看板，其余 hub 能力一律关闭
+ *  ② 值日专用群 → 「值日助手」看板 + 关键词回答放行，基础指令仍关闭
  *  ③ p2p 值日指令 → 转发（不受 P2P 指令白名单限制，名册成员人人可用）
  * @returns {{handled: boolean, reply: string}}
  */
@@ -136,7 +136,7 @@ async function handleDutyBranch(message, { isGroup, text, senderId }) {
     }
   }
 
-  // ② 值日专用群：仅「值日助手」
+  // ② 值日专用群：「值日助手」看板 + 关键词回答放行（基础指令仍关闭）
   if (isGroup && isDutyGroup(message.chat_id)) {
     if (text === '值日助手') {
       const reply = await handleDutyForward({
@@ -144,9 +144,15 @@ async function handleDutyBranch(message, { isGroup, text, senderId }) {
       });
       return { handled: true, reply };
     }
+    // 关键词回答照常放行：先「@触发回答」后「关键词回答」，与其它群 @ 命中同款
+    const autoHit = autoReplyService.buildMentionReplyForText(text);
+    if (autoHit) {
+      console.log('[对话服务] 值日群关键词自动回复命中:', autoHit.keywords.join('/'), `(表: ${autoHit.source})`);
+      return { handled: true, reply: autoHit.text };
+    }
     return {
       handled: true,
-      reply: '🧹 本群仅开放「值日助手」看板：@我 发送「值日助手」查看今日值日\n（查询排班、请假、打卡确认请私信机器人）',
+      reply: '🧹 本群为值日/快递申领专用群：@我 发送「值日助手」查看今日值日，关键词彩蛋照常有效\n（查询排班、请假、打卡确认请私信机器人）',
     };
   }
 
