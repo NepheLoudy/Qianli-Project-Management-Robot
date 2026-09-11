@@ -69,7 +69,7 @@ async function handleMessageEvent(data) {
       console.log('[事件订阅] 关键词监听跳过：非目标群 (chat_id:', chatId, ')');
     }
 
-    // 会议提醒：仅检测会议卡片（video_chat / share_chat / share_calendar 等）
+    // 会议提醒：仅检测会议卡片（video_chat / share_calendar / interactive 等，不含 share_chat 群聊分享）
     if (chatType === 'group') {
       const meetingResult = await meetingReminderService.processMeetingMessage(data);
       if (meetingResult.handled && meetingResult.triggered) {

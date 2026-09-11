@@ -24,8 +24,8 @@ function containsMeetingKeyword(text) {
 }
 
 function containsMeetingLink(text) {
-  if (!text) return false;
-  return MEETING_URL_REGEX.test(text);
+  // 不用 regex.test：MEETING_URL_REGEX 带 g 标志，test 会推进 lastIndex 导致后续调用漏判
+  return extractMeetingLinks(text).length > 0;
 }
 
 function containsMeetingCard(message) {
@@ -44,16 +44,7 @@ function containsMeetingCard(message) {
 
     const msgType = message.msg_type || message.message_type;
 
-    if (msgType === 'share_chat') {
-      const title = content.title || content.chat_name || '';
-      const description = content.description || '';
-      if (title.includes('会议') || title.includes('meeting') || description.includes('会议') || description.includes('meeting')) {
-        return true;
-      }
-      if (content.chat_id && content.chat_id.startsWith('oc_')) {
-        return true;
-      }
-    }
+    // share_chat（分享群聊卡片）与会议无关，无论群名是否带「会议」都不触发
 
     if (msgType === 'share_calendar') {
       const title = content.title || '';
@@ -109,7 +100,7 @@ function containsMeetingCard(message) {
             if (action.tag === 'button') {
               const text = action.text || {};
               const buttonText = text.content || '';
-              if (buttonText.includes('加入会议') || buttonText.includes('加入') || buttonText.includes('join') || buttonText.includes('meeting') || buttonText.includes('查看日程')) {
+              if (buttonText.includes('加入会议') || buttonText.includes('join') || buttonText.includes('meeting') || buttonText.includes('查看日程')) {
                 return true;
               }
             }

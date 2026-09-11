@@ -399,3 +399,13 @@
 
 - `/help` 值日段改为 `/值日助手` 等斜杠形态（与基础指令风格一致），注明带不带 / 均可。
 - `dutyPolicyService` 兜底 p2pCommands 补 / 变体、前缀补 `/绑定`，与 duty-bot 下发策略对齐（断联兜底时斜杠形态同样放行）。
+
+### v73 · 2026-09-11 · fix（随本提交落地，无独立哈希）
+
+**会议卡片播报误识别群聊分享卡片（share_chat）——整支移除**
+
+- 现象：群里分享任意群聊卡片都触发会议提醒 @所有人（用户报「会议卡片播报识别到群聊卡片链接」）。根因：v31 引入的 share_chat 识别分支里，`content.chat_id` 以 oc_ 开头即判为会议卡片——而每张群聊分享卡片都带 oc_ chat_id，等同「凡 share_chat 必触发」；群名/描述带「会议」的次级判定同属误伤（分享的是群，不是会议）。
+- `meetingReminderService.containsMeetingCard`：整支删除 share_chat 分支；`interactive` 卡片按钮匹配「加入」收紧为「加入会议」（原两字「加入」会命中任何带「加入群聊」按钮的卡片，同类误报源）。
+- 顺手排雷 `containsMeetingLink`：MEETING_URL_REGEX 带 g 标志，连续 `test` 会因 lastIndex 残留漏判，改走 `extractMeetingLinks`（match）实现（当前主链路未用到，属潜伏 bug）。
+- 文档同步：README §8 检测类型去掉 share_chat（注明不触发）；eventSubscription.js 注释同步。
+- 回归：node 内联断言 11 项全过（share_chat 带/不带「会议」群名均不触发；video_chat / share_calendar / interactive 会议卡仍触发；按钮「加入群聊」不触发；containsMeetingLink 连续调用无状态残留）。

@@ -67,7 +67,8 @@
 
 ### 8. 会议卡片提醒
 - 监听机器人所在**所有群聊**的会议卡片消息
-- 检测类型：`video_chat`（群聊视频会议卡片）、`share_chat`、`share_calendar`、`calendar_event`、`interactive`
+- 检测类型：`video_chat`（群聊视频会议卡片）、`share_calendar`、`calendar_event`、`interactive`
+  （`share_chat` 群聊分享卡片与会议无关，不触发）
 - 检测到会议卡片后自动 @所有人 提醒参会
 - 5 分钟内同一群不重复触发
 
