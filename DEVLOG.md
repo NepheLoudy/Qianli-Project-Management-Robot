@@ -376,3 +376,10 @@
 - 不受影响：审批群路由、p2p 私聊指令白名单、晚间静默、网关层（duty-bot 仍不消费消息事件）。
 - 回归：stub-test-duty-branch 扩至 27 项断言全过（新增：策略扩管辖群、非管辖群落常规流程、关键词开关 @与未@ 双路径、指令关闭开关、p2p 清单变更、duty-bot 失联兜底）。
 - 文档：README §9、LOGIC-MAP §2.4、config.js/.env.example 注释同步"管辖权威在 duty-bot"。
+
+### v70 · 2026-09-11 · 2c33716 · feat
+
+**定制窗口 GET /api/hub/policy（顶层「机器人后端定制窗口」规则首批落地）**
+
+- 只读全景：审批群 chat/服务地址、值日策略源（duty-bot /api/duty/policy）与兜底 chatId、关键词回答表范围（AUTO_REPLY_CHAT_IDS）、关键词监听群、会议群、私聊指令白名单计数、播报群（chatId/label/webhook 有无）、DDL cron 与预警天数。
+- 既有 /api/autoreplies/config、/api/autoreplies/mention-config 不变；窗口只读，定制修改仍走对应机制（回答表走 xlsx→push，管辖口径在 duty-bot）。
