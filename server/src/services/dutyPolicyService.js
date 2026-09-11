@@ -26,6 +26,7 @@ function buildFallbackPolicy() {
     },
     p2pCommands: [
       '值日助手', '我要请假', '查询我的下一次值日', '是', '否', '生成排班表',
+      '是的', '好', '好了', '完成', '完成了', '做完了', '搞定', '搞定了',
       '/值日助手', '/我要请假', '/查询我的下一次值日', '/是', '/否', '/生成排班表',
     ],
     p2pCommandPrefixes: ['绑定', '/绑定'],
@@ -57,9 +58,12 @@ async function getDutyPolicy({ force = false } = {}) {
   return cache.policy;
 }
 
-// 管辖范畴判定：chat_id 是否值日管辖群（空列表 = 无管辖群）
+// 管辖范畴判定：chat_id 是否值日管辖群
+// （空列表 = 不限制，与 duty-bot 侧判定口径一致；失联兜底策略的
+//  groupChatIds 取本仓 DUTY_CHAT_ID，配置了该键即非空）
 function isManagedGroup(policy, chatId) {
-  return policy.groupChatIds.includes(chatId);
+  const ids = Array.isArray(policy.groupChatIds) ? policy.groupChatIds : [];
+  return ids.length === 0 || ids.includes(chatId);
 }
 
 // p2p 值日指令放行判定（精确词 + 前缀词，清单来自策略）
@@ -76,6 +80,16 @@ function keywordAllowedInGroup(policy, chatId) {
   return policy.hubEnforcement.keywordPassthrough !== false;
 }
 
+// 值日域保留词（归一去斜杠后的静态清单，取内置兜底策略而非实时下发——
+// 校验口径不随 duty-bot 在线改写漂移）：回答表关键词撞车校验用
+function dutyReservedWords() {
+  const p = buildFallbackPolicy();
+  const words = [p.hubEnforcement.groupBoardCommand, ...p.p2pCommands, ...p.p2pCommandPrefixes]
+    .map((w) => String(w).replace(/^\//, '').trim())
+    .filter(Boolean);
+  return [...new Set(words)];
+}
+
 // stub 测试用：清空策略缓存，强制下一次重新拉取
 function resetCacheForTests() {
   cache = { policy: null, fetchedAt: 0 };
@@ -87,5 +101,6 @@ module.exports = {
   isDutyCommandText,
   keywordAllowedInGroup,
   buildFallbackPolicy,
+  dutyReservedWords,
   resetCacheForTests,
 };

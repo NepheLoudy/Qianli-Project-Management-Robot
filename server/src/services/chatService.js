@@ -83,7 +83,8 @@ function isP2pCommandAllowed(senderId, chatId) {
 
 /**
  * 转发值日载荷到 duty-bot（approval-bot 同款转发契约，另带身份字段）
- * 返回 duty-bot 的 reply；空串表示其已自行处理（如群看板卡片），无需再回复
+ * 返回 { reply, handled }；reply 为空表示 duty-bot 已自行处理（如群看板卡片）
+ * 或明确不接管（如无会话的打卡口语变体）——由调用方结合分支语义决定落回
  */
 async function handleDutyForward(payload) {
   try {
@@ -96,19 +97,21 @@ async function handleDutyForward(payload) {
       throw new Error(`值日服务响应失败: ${res.status}`);
     }
     const data = await res.json();
-    return data.reply || '';
+    return { reply: data.reply || '', handled: data.handled !== false };
   } catch (err) {
     console.error('[对话服务] 调用值日服务失败:', err.message);
-    return '❌ 值日服务暂不可用，请稍后再试';
+    return { reply: '❌ 值日服务暂不可用，请稍后再试', handled: true };
   }
 }
 
 /**
  * 值日域分支（先于其它能力处理）；管辖范畴/生效范畴以 duty-bot 管辖策略为准：
  *  ① p2p 图片 → 最小转发 {type:'image'}（duty-bot 自行下载转存，hub 不做转存）
- *  ② 值日管辖群 → 「看板触发词」转发看板 + 关键词回答放行（策略开关），
- *     基础指令按策略关闭，未命中关键词回策略下发的引导语
- *  ③ p2p 值日指令 → 按策略指令清单转发（不受 P2P 指令白名单限制，名册成员人人可用）
+ *  ② 值日管辖群 → 「看板触发词（带不带 / 均可）」转发看板 + 关键词回答放行（策略开关），
+ *     @+纯图片静默吞掉，基础指令按策略关闭，未命中关键词回策略下发的引导语
+ *  ③ p2p 值日指令 → 按策略指令清单转发（不受 P2P 指令白名单限制，名册成员人人可用）；
+ *     duty-bot 未接管（reply 空）时落回 hub 常规流程
+ *  ④ 非管辖群 @ 值日指令 → 回办理路径提示，不落欢迎语/未知指令
  * @returns {{handled: boolean, reply: string}}
  */
 async function handleDutyBranch(message, { isGroup, text, senderId }) {
@@ -120,7 +123,7 @@ async function handleDutyBranch(message, { isGroup, text, senderId }) {
     if (msgType === 'image') {
       const imageKeys = keywordService.extractImageKeys(message);
       if (imageKeys.length > 0) {
-        const reply = await handleDutyForward({
+        const { reply } = await handleDutyForward({
           type: 'image', openId: senderId, imageKey: imageKeys[0], messageId: message.message_id,
         });
         return { handled: true, reply };
@@ -133,11 +136,16 @@ async function handleDutyBranch(message, { isGroup, text, senderId }) {
   if (isGroup && dutyPolicy.isManagedGroup(policy, message.chat_id)) {
     const enforce = policy.hubEnforcement || {};
     const boardCommand = enforce.groupBoardCommand || '值日助手';
-    if (text === boardCommand) {
-      const reply = await handleDutyForward({
+    if (text === boardCommand || text === `/${boardCommand}`) {
+      const { reply } = await handleDutyForward({
         command: text, openId: senderId, chatType: 'group', chatId: message.chat_id,
+        messageId: message.message_id,
       });
       return { handled: true, reply };
+    }
+    // @+纯图片（无文字）：无可执行的值日语义，静默吞掉，不回引导语噪音
+    if (!text) {
+      return { handled: true, reply: '' };
     }
     // 关键词回答照常放行：先「@触发回答」后「关键词回答」，与其它群 @ 命中同款
     if (enforce.keywordPassthrough !== false) {
@@ -157,14 +165,27 @@ async function handleDutyBranch(message, { isGroup, text, senderId }) {
     return { handled: false, reply: '' };
   }
 
+  // ④ 非管辖群 @ 值日指令（精确词；前缀「绑定」不在此列，避免误拦常规用法）：
+  // 提示办理路径，避免落进项目管理欢迎语/未知指令
+  if (isGroup && Array.isArray(policy.p2pCommands) && policy.p2pCommands.includes(text)) {
+    return {
+      handled: true,
+      reply: '🧹 值日相关功能（看板/请假/打卡确认）请在值日专用群 @我，或私信机器人办理。',
+    };
+  }
+
   // ③ p2p 值日指令（清单来自管辖策略）——先于私聊指令白名单放行，
   // 否则名册成员未进 P2P 白名单时 无法绑定/请假/打卡
   if (!isGroup && dutyPolicy.isDutyCommandText(policy, text)) {
-    const reply = await handleDutyForward({
+    const fwd = await handleDutyForward({
       command: text, openId: senderId, chatType: 'p2p', chatId: message.chat_id,
       messageId: message.message_id,
     });
-    return { handled: true, reply };
+    // duty-bot 未接管（无会话打卡口语变体，reply 为空）→ 落回 hub 常规流程
+    if (!fwd.reply) {
+      return { handled: false, reply: '' };
+    }
+    return { handled: true, reply: fwd.reply };
   }
 
   return { handled: false, reply: '' };

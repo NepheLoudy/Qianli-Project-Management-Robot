@@ -409,3 +409,15 @@
 - 顺手排雷 `containsMeetingLink`：MEETING_URL_REGEX 带 g 标志，连续 `test` 会因 lastIndex 残留漏判，改走 `extractMeetingLinks`（match）实现（当前主链路未用到，属潜伏 bug）。
 - 文档同步：README §8 检测类型去掉 share_chat（注明不触发）；eventSubscription.js 注释同步。
 - 回归：node 内联断言 11 项全过（share_chat 带/不带「会议」群名均不触发；video_chat / share_calendar / interactive 会议卡仍触发；按钮「加入群聊」不触发；containsMeetingLink 连续调用无状态残留）。
+
+### v74 · 2026-09-12 · 随本提交落地 · fix
+
+**值日分支修复：群看板 / 形态可触发 + 载荷 messageId + 非管辖群提示 + 空群口径对齐 + 回答表保留词校验**
+
+- 群看板触发词双形态：`handleDutyBranch` 管辖群分支由全等 `值日助手` 改为同时接受 `/值日助手`——此前带斜杠形态在 hub 被拦成引导语，duty-bot v7「指令风格统一」只统一了 duty-bot 侧与 p2p 清单，hub 群门漏了，policy「容忍 / 前缀」声明与真实链路不符（当时 NAS 实测系直 POST 绕过 hub 门）。/help 值日段「带不带 / 均可」的既有承诺自此为真。
+- 群看板转发载荷补 `messageId`（此前仅 p2p 带）：duty-bot 消息级幂等在群路径生效，不再纯靠 1h 限流兜底。
+- `handleDutyForward` 返回 `{reply, handled}`：duty-bot 未接管（无会话打卡口语变体，reply 空）时 p2p 落回常规流程（欢迎语），不吞消息也不误发。
+- 非管辖群 @ 值日指令（p2pCommands 精确词，不含「绑定」前缀防误拦）回「请到值日专用群或私信办理」提示，不再落项目管理欢迎语/未知指令；管辖群 @+纯图片（text 空）静默吞掉，不再回引导语噪音。
+- `dutyPolicyService.isManagedGroup` 空数组语义改为「不限制」，与 duty-bot 判定口径对齐（原「空=无管辖群」，env 漏配时全群失效、与 duty-bot 行为分叉）；失联兜底仍按本仓 `DUTY_CHAT_ID`。兜底 p2pCommands 同步镜像打卡变体。
+- 回答表写窗口保留词校验：`autoReplyService.upsertRule` 拒绝与值日域保留词（`dutyPolicyService.dutyReservedWords()`：看板/打卡/请假/绑定等，去斜杠归一）互为子串的关键词，路由 400 返回——防往关键词回答表加含「值日/是」的词后在管辖群截胡值日语义。
+- stub 测试（scripts/stub-test-duty-branch.js）扩到 34 项：斜杠形态、载荷 messageId、@+纯图片静默、非管辖群提示、空群口径、变体接管/落回、保留词拒绝（拒绝发生在落盘前）全断言，全过。

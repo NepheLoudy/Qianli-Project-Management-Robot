@@ -1,8 +1,10 @@
 /**
  * hub 值日分支 stub 测试（不触飞书：mock bot 回复捕获 + 本地占位 duty 服务）
  * 覆盖：值日管辖策略驱动（duty-bot /api/duty/policy 下发 + 失联兜底）下的
- *      「看板触发词」转发、关键词回答放行（@与未@，策略开关）、基础指令关闭、
- *      p2p 值日指令放行（策略清单）、p2p 图片最小转发、非值日能力不受影响。
+ *      「看板触发词」转发（裸词/带 / 双形态）、载荷 messageId、关键词回答放行
+ *      （@与未@，策略开关）、基础指令关闭、@+纯图片静默、非管辖群值日指令提示、
+ *      空管辖群列表=不限制、p2p 值日指令放行（策略清单）、打卡口语变体接管/落回、
+ *      p2p 图片最小转发、回答表保留词冲突校验、非值日能力不受影响。
  * 运行：node scripts/stub-test-duty-branch.js
  */
 const http = require('http');
@@ -26,7 +28,10 @@ function defaultPolicy() {
       keywordPassthrough: true,
       fallbackGuidance: '🧹 本群为值日/快递申领专用群：@我 发送「值日助手」查看今日值日，关键词彩蛋照常有效\n（查询排班、请假、打卡确认请私信机器人）',
     },
-    p2pCommands: ['值日助手', '我要请假', '查询我的下一次值日', '是', '否', '生成排班表'],
+    p2pCommands: [
+      '值日助手', '我要请假', '查询我的下一次值日', '是', '否', '生成排班表',
+      '是的', '好', '好了', '完成', '完成了', '做完了', '搞定', '搞定了',
+    ],
     p2pCommandPrefixes: ['绑定'],
   };
 }
@@ -46,6 +51,10 @@ const dutyServer = http.createServer((req, res) => {
     const payload = JSON.parse(body || '{}');
     captured.dutyPayloads.push(payload);
     res.setHeader('Content-Type', 'application/json');
+    // 模拟 duty-bot「无会话口语变体不接管」：handled=false + 空 reply → hub 落回常规流程
+    if (payload.command === '好了') {
+      return res.end(JSON.stringify({ handled: false, reply: '' }));
+    }
     res.end(JSON.stringify({ reply: `占位回执:${payload.command || payload.type || ''}` }));
   });
 });
@@ -115,10 +124,28 @@ function unAtEvent(text, msgId, chatId = 'oc_duty_group_test') {
   await new Promise((r) => dutyServer.listen(39006, r));
   check('配置加载：值日群/服务地址来自 env', config.duty.chatId === 'oc_duty_group_test' && config.duty.serviceUrl.includes('39006'));
 
-  // ① 值日管辖群：看板触发词放行并转发（管辖群与触发词均来自策略下发）
+  // ① 值日管辖群：看板触发词放行并转发（管辖群与触发词均来自策略下发；载荷带 messageId）
   await chatService.processChatMessage(groupEvent('值日助手', 'm1'));
-  check('值日群「值日助手」→ 转发群看板载荷', captured.dutyPayloads.some((p) => p.command === '值日助手' && p.chatType === 'group' && p.chatId === 'oc_duty_group_test'));
+  check('值日群「值日助手」→ 转发群看板载荷（含 messageId）', captured.dutyPayloads.some((p) => p.command === '值日助手' && p.chatType === 'group' && p.chatId === 'oc_duty_group_test' && p.messageId === 'm1'));
   check('值日群「值日助手」→ 回执已回复', captured.botReplies.some((r) => r.messageId === 'm1' && r.text.includes('占位回执')));
+
+  // ①′ 值日管辖群：带 / 前缀形态同样触达看板（hub 群门双形态匹配）
+  await chatService.processChatMessage(groupEvent('/值日助手', 'm1s'));
+  check('值日群「/值日助手」→ 转发群看板载荷', captured.dutyPayloads.some((p) => p.command === '/值日助手' && p.chatType === 'group' && p.messageId === 'm1s'));
+
+  // ①″ 值日管辖群：@+纯图片（无文字）→ 静默吞掉，不回引导语、不转发
+  await chatService.processChatMessage({
+    message: {
+      message_id: 'm1i',
+      message_type: 'image',
+      chat_type: 'group',
+      chat_id: 'oc_duty_group_test',
+      content: JSON.stringify({ image_key: 'ik_group_img' }),
+      mentions: [{ key: '@_bot_1', id: { open_id: 'ou_bot' }, mentioned_type: 'bot', name: '爆米花机-对话型' }],
+    },
+    sender: { sender_id: { open_id: 'ou_member_1', name: '队员甲' } },
+  });
+  check('值日群 @+纯图片 → 静默（无回复、不转发）', !captured.botReplies.some((r) => r.messageId === 'm1i') && !captured.dutyPayloads.some((p) => p.chatId === 'oc_duty_group_test' && p.messageId === 'm1i'));
 
   // ② 值日管辖群：基础指令按策略关闭（值日群引导语）
   await chatService.processChatMessage(groupEvent('/help', 'm2'));
@@ -148,6 +175,15 @@ function unAtEvent(text, msgId, chatId = 'oc_duty_group_test') {
     JSON.stringify(captured.dutyPayloads.map((p) => p.command)));
   check('p2p 绑定指令原文转发（duty-bot 侧解析姓名）', captured.dutyPayloads.some((p) => p.command === '绑定 队员C'));
 
+  // ④′ p2p 打卡口语变体：duty-bot 接管 → 转发并回执；未接管（好了=模拟无会话）→ 落回 hub 常规流程
+  await chatService.processChatMessage(p2pEvent('完成了', 'p_done'));
+  check('p2p「完成了」→ 转发 duty-bot', captured.dutyPayloads.some((p) => p.command === '完成了' && p.chatType === 'p2p' && p.messageId === 'p_done'));
+  check('p2p「完成了」→ 转发回执已回复', captured.botReplies.some((r) => r.messageId === 'p_done' && r.text.includes('占位回执')));
+  await chatService.processChatMessage(p2pEvent('好了', 'p_hao'));
+  check('p2p「好了」→ 已转发 duty-bot（未接管空回执）', captured.dutyPayloads.some((p) => p.command === '好了' && p.messageId === 'p_hao'));
+  const hao = captured.botReplies.find((r) => r.messageId === 'p_hao');
+  check('p2p「好了」→ hub 落回常规流程（非占位回执）', !!hao && hao.text.length > 0 && !hao.text.includes('占位回执'), hao && hao.text);
+
   // ⑤ p2p 图片：最小转发
   await chatService.processChatMessage(p2pEvent('', 'img1', {
     message_type: 'image',
@@ -174,11 +210,17 @@ function unAtEvent(text, msgId, chatId = 'oc_duty_group_test') {
   await chatService.processChatMessage(groupEvent('值日助手', 'm8', 'oc_policy_group'));
   check('策略扩管辖：新管辖群「值日助手」→ 转发看板', captured.dutyPayloads.some((p) => p.command === '值日助手' && p.chatId === 'oc_policy_group'));
 
-  // ⑨ 策略外的群不进值日分支（env DUTY_CHAT_ID 之外的群发看板词 → 常规流程接管）
+  // ⑨ 策略外的群不进值日分支（env DUTY_CHAT_ID 之外的群发看板词 → 办理路径提示）
   dutyPolicy.resetCacheForTests();
   await chatService.processChatMessage(groupEvent('值日助手', 'm9', 'oc_outsider_group'));
   check('非管辖群 @值日助手 → 不转发看板', !captured.dutyPayloads.some((p) => p.command === '值日助手' && p.chatId === 'oc_outsider_group'));
-  check('非管辖群 @值日助手 → 常规回复接管', captured.botReplies.some((r) => r.messageId === 'm9' && r.text.length > 0));
+  check('非管辖群 @值日助手 → 值日办理路径提示', captured.botReplies.some((r) => r.messageId === 'm9' && r.text.includes('值日专用群')));
+
+  // ⑨′ 空管辖群列表 = 不限制（与 duty-bot 判定口径一致）
+  policyState.payload = { ...defaultPolicy(), groupChatIds: [] };
+  dutyPolicy.resetCacheForTests();
+  await chatService.processChatMessage(groupEvent('/help', 'm9e', 'oc_outsider_group'));
+  check('空管辖群列表 → 任意群按管辖群对待（基础指令关闭回引导语）', captured.botReplies.some((r) => r.messageId === 'm9e' && r.text.includes('值日/快递申领专用群')));
 
   // ⑩ 策略关关键词放行：@关键词回引导语、未@关键词不再回复
   policyState.payload = { ...defaultPolicy(), hubEnforcement: { ...defaultPolicy().hubEnforcement, keywordPassthrough: false } };
@@ -212,6 +254,21 @@ function unAtEvent(text, msgId, chatId = 'oc_duty_group_test') {
 
   policyState.payload = null;
   dutyPolicy.resetCacheForTests();
+
+  // ⑭ 回答表保留词冲突校验（值日域保留词；拒绝发生在落盘前，不写 .local.json）
+  const reserved = dutyPolicy.dutyReservedWords();
+  check('值日保留词清单包含看板/打卡/绑定词', ['值日助手', '是', '我要请假', '绑定'].every((w) => reserved.includes(w)));
+  let conflictErr = '';
+  try {
+    autoReplyService.upsertRule('group', { keywords: ['值日'], answer: '冲突测试' });
+  } catch (err) { conflictErr = err.message; }
+  check('关键词「值日」被保留词校验拒绝（保留词子串）', conflictErr.includes('值日域保留词冲突'), conflictErr);
+  let conflictErr2 = '';
+  try {
+    autoReplyService.upsertRule('mention', { keywords: ['是不是'], answer: '冲突测试' });
+  } catch (err) { conflictErr2 = err.message; }
+  check('关键词「是不是」被保留词校验拒绝（包含「是」）', conflictErr2.includes('值日域保留词冲突'), conflictErr2);
+
   dutyServer.close();
   console.log(failed === 0 ? '\n全部通过 ✅' : `\n${failed} 项失败 ❌`);
   process.exit(failed === 0 ? 0 : 1);
