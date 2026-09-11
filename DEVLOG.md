@@ -364,3 +364,15 @@
 - 不受影响：p2p 值日指令/图片转发、「值日助手」看板 1h 限流、审批群财务路由、晚间静默（关键词回答属对话回路，不在播报闸门范围）、网关层（duty-bot 仍不消费消息事件，改动全在 hub 内部闸门）。
 - 文档同步：根 AGENTS.md 值日专用群裁定行、qianli-chat-architecture SKILL.md 架构图、dashboard/registry.js hub permissions、README §9 生效范围（值日群例外说明）、ticket-pm/LOGIC-MAP §2.4 值日分支条目、server/.env.example 与 config.js 注释。
 - 回归：stub-test-duty-branch 扩至 17 项断言全过（新增：@关键词回答且不转发 duty、未@关键词命中并回复、/help 与普通对话回新引导语、/help 不再返回帮助内容；原有值日助手看板/p2p 指令/图片转发/私聊白名单断言不变）。
+
+### v69 · 2026-09-11 · 5f0add5 · feat
+
+**值日域权限改策略驱动——hub 值日分支与关键词闸门全部接 duty-bot 管辖策略**
+
+- 需求：值日域权限管辖范畴/生效范畴归位 duty-bot 后端（v4 新增 `GET /api/duty/policy`），hub 不再硬编码值日群口径。
+- 新增 `server/src/services/dutyPolicyService.js`：拉取 duty-bot 管辖策略（60s 缓存；失联时按本仓 `DUTY_CHAT_ID` + 内置默认规则短暂兜底，15s 后自动重试）。
+- `chatService.handleDutyBranch` 策略化：管辖判定 `isManagedGroup(policy, chatId)`、看板触发词 `groupBoardCommand`、关键词放行 `keywordPassthrough`、指令关闭 `closeBasicCommands` + 引导语文本、p2p 指令清单 `p2pCommands/p2pCommandPrefixes` 全部来自策略（原 `isDutyGroup`/`isDutyCommand` 硬编码删除）；策略声明不关基础指令时交还 hub 常规流程。
+- `autoReplyService.processMessageEvent`：未@关键词路径接 `keywordAllowedInGroup` 策略闸门（非管辖群恒放行）。
+- 不受影响：审批群路由、p2p 私聊指令白名单、晚间静默、网关层（duty-bot 仍不消费消息事件）。
+- 回归：stub-test-duty-branch 扩至 27 项断言全过（新增：策略扩管辖群、非管辖群落常规流程、关键词开关 @与未@ 双路径、指令关闭开关、p2p 清单变更、duty-bot 失联兜底）。
+- 文档：README §9、LOGIC-MAP §2.4、config.js/.env.example 注释同步"管辖权威在 duty-bot"。
