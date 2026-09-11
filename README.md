@@ -87,6 +87,7 @@
   - 群里 @机器人：先查「@触发回答」表，未命中回落「关键词回答」表；两表都没命中才回默认欢迎语（审批群的 `/approval-*` 指令路由不受影响）。**值日管辖群例外**：@消息先经值日分支——看板触发词出看板、关键词命中照常回答，其余回策略下发的引导语（基础指令关闭，不会到欢迎语）；管辖群与规则由 duty-bot `GET /api/duty/policy` 下发（断联时按本仓 `DUTY_CHAT_ID` 兜底）
   - 私聊：**不返回回答内容**——命中任一表只回「⚠️ 关键词自动回复仅面向群聊开放，请在群里 @我 使用。」；没命中仍是欢迎语（私聊指令白名单不受影响）
 - 指令/接口：`/autoreply` 分两段查看两张表（含概率）；`GET /api/autoreplies/config` 读「关键词回答」表、`GET /api/autoreplies/mention-config` 读「@触发回答」表；`/keywords` 仍只管原监听插件
+- 定制窗口（顶层 AGENTS「机器人后端定制窗口」）：`GET /api/autoreplies/rules?table=group|mention` 读当前生效规则（`.local.json` 优先）；`POST /api/autoreplies/rules`（`{table, rule:{keywords:[], answersText:"每行一条 回答|权重"}}`）新增/更新；`POST /api/autoreplies/rules/delete`（`{table, keywords:[]}`）删除；`POST /api/autoreplies/enabled`（`{table, enabled}`）启停整表。**改动写 NAS `.local.json` 即时生效**；`npm run push` 会用本地版本覆盖该文件，持久批量编辑仍以本地 `关键词回答表.xlsx` 为准（运维台「定制中心」已内置这套编辑器）
 - 回复方式：引用回复原消息，失败降级为直接发送
 - 防干扰：其他应用/机器人发出的消息（如 webhook 播报卡片）不触发；指令优先于自动回复（审批群 `/approval-*` 照常转发）
 - 属对话回路（用户消息触发的即时应答），不受晚间静默窗口限制

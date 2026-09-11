@@ -383,3 +383,12 @@
 
 - 只读全景：审批群 chat/服务地址、值日策略源（duty-bot /api/duty/policy）与兜底 chatId、关键词回答表范围（AUTO_REPLY_CHAT_IDS）、关键词监听群、会议群、私聊指令白名单计数、播报群（chatId/label/webhook 有无）、DDL cron 与预警天数。
 - 既有 /api/autoreplies/config、/api/autoreplies/mention-config 不变；窗口只读，定制修改仍走对应机制（回答表走 xlsx→push，管辖口径在 duty-bot）。
+
+### v71 · 2026-09-11 · a45d87b · feat
+
+**关键词回答表定制窗口（CRUD，即时生效）+ 运维台「定制中心」接入**
+
+- 新增 `GET /api/autoreplies/rules?table=group|mention`（读当前生效规则，`.local.json` 优先）、`POST /api/autoreplies/rules`（新增/更新，keywords 数组或逗号串；answers 数组或 answersText 每行一条 `回答|权重`，权重缺省 1）、`POST /api/autoreplies/rules/delete`、`POST /api/autoreplies/enabled`。
+- 写入目标 = `.local.json`（运行时每消息重读，**改动即时生效**）；push 会用本地 xlsx 派生版覆盖——持久批量编辑仍以本地 `关键词回答表.xlsx` 为准，窗口改动需保留时 push 前先 GET 取回回填。
+- 代码归位：`autoReplyService` 新增 getRules/upsertRule/deleteRule/setTableEnabled + 规则输入归一化（关键词组排序匹配、同组覆盖）。
+- 验证：NAS 实测 加规则→生效文件含该词→删规则→文件复原 全闭环；运维台「定制中心」已内置该编辑器（规则列表/删除/保存/启停/切表）。
