@@ -1,6 +1,7 @@
 const bot = require('../feishu/bot');
 const keywordService = require('./keywordService');
 const autoReplyService = require('./autoReplyService');
+const dutyPolicy = require('./dutyPolicyService');
 const { getBroadcastHistory } = require('../cron');
 const config = require('../config');
 const dayjs = require('dayjs');
@@ -76,20 +77,9 @@ function isP2pCommandAllowed(senderId, chatId) {
   );
 }
 
-/**
- * 是否值日专用群（快递申领群）：hub 基础指令关闭，放行「值日助手」看板与关键词回答
- */
-function isDutyGroup(chatId) {
-  return !!config.duty.chatId && chatId === config.duty.chatId;
-}
-
-// 值日私信指令（精确匹配；绑定 姓名为前缀指令）——先于私聊指令白名单放行，
-// 否则名册成员未进 P2P 白名单时 无法绑定/请假/打卡
-function isDutyCommand(text) {
-  if (!text) return false;
-  const exact = ['值日助手', '我要请假', '查询我的下一次值日', '是', '否', '生成排班表'];
-  return exact.includes(text) || text.startsWith('绑定');
-}
+// 值日域的管辖范畴（哪些群）与生效范畴（放行什么）以 duty-bot
+// GET /api/duty/policy 下发为准（dutyPolicyService 短缓存消费，断联短暂兜底），
+// hub 在此只做执行闸门。
 
 /**
  * 转发值日载荷到 duty-bot（approval-bot 同款转发契约，另带身份字段）
@@ -114,13 +104,16 @@ async function handleDutyForward(payload) {
 }
 
 /**
- * 值日域分支（先于其它能力处理）：
+ * 值日域分支（先于其它能力处理）；管辖范畴/生效范畴以 duty-bot 管辖策略为准：
  *  ① p2p 图片 → 最小转发 {type:'image'}（duty-bot 自行下载转存，hub 不做转存）
- *  ② 值日专用群 → 「值日助手」看板 + 关键词回答放行，基础指令仍关闭
- *  ③ p2p 值日指令 → 转发（不受 P2P 指令白名单限制，名册成员人人可用）
+ *  ② 值日管辖群 → 「看板触发词」转发看板 + 关键词回答放行（策略开关），
+ *     基础指令按策略关闭，未命中关键词回策略下发的引导语
+ *  ③ p2p 值日指令 → 按策略指令清单转发（不受 P2P 指令白名单限制，名册成员人人可用）
  * @returns {{handled: boolean, reply: string}}
  */
 async function handleDutyBranch(message, { isGroup, text, senderId }) {
+  const policy = await dutyPolicy.getDutyPolicy();
+
   // ① p2p 图片：值日照片凭证直传
   if (!isGroup) {
     const msgType = message.message_type || message.msg_type;
@@ -136,28 +129,37 @@ async function handleDutyBranch(message, { isGroup, text, senderId }) {
     }
   }
 
-  // ② 值日专用群：「值日助手」看板 + 关键词回答放行（基础指令仍关闭）
-  if (isGroup && isDutyGroup(message.chat_id)) {
-    if (text === '值日助手') {
+  // ② 值日管辖群：看板触发词 + 关键词回答放行（基础指令按策略关闭）
+  if (isGroup && dutyPolicy.isManagedGroup(policy, message.chat_id)) {
+    const enforce = policy.hubEnforcement || {};
+    const boardCommand = enforce.groupBoardCommand || '值日助手';
+    if (text === boardCommand) {
       const reply = await handleDutyForward({
-        command: '值日助手', openId: senderId, chatType: 'group', chatId: message.chat_id,
+        command: text, openId: senderId, chatType: 'group', chatId: message.chat_id,
       });
       return { handled: true, reply };
     }
     // 关键词回答照常放行：先「@触发回答」后「关键词回答」，与其它群 @ 命中同款
-    const autoHit = autoReplyService.buildMentionReplyForText(text);
-    if (autoHit) {
-      console.log('[对话服务] 值日群关键词自动回复命中:', autoHit.keywords.join('/'), `(表: ${autoHit.source})`);
-      return { handled: true, reply: autoHit.text };
+    if (enforce.keywordPassthrough !== false) {
+      const autoHit = autoReplyService.buildMentionReplyForText(text);
+      if (autoHit) {
+        console.log('[对话服务] 值日群关键词自动回复命中:', autoHit.keywords.join('/'), `(表: ${autoHit.source})`);
+        return { handled: true, reply: autoHit.text };
+      }
     }
-    return {
-      handled: true,
-      reply: '🧹 本群为值日/快递申领专用群：@我 发送「值日助手」查看今日值日，关键词彩蛋照常有效\n（查询排班、请假、打卡确认请私信机器人）',
-    };
+    if (enforce.closeBasicCommands !== false) {
+      return {
+        handled: true,
+        reply: enforce.fallbackGuidance || dutyPolicy.buildFallbackPolicy().hubEnforcement.fallbackGuidance,
+      };
+    }
+    // 策略声明不关基础指令 → 交还 hub 常规流程（指令/关键词/欢迎语）
+    return { handled: false, reply: '' };
   }
 
-  // ③ p2p 值日指令
-  if (!isGroup && isDutyCommand(text)) {
+  // ③ p2p 值日指令（清单来自管辖策略）——先于私聊指令白名单放行，
+  // 否则名册成员未进 P2P 白名单时 无法绑定/请假/打卡
+  if (!isGroup && dutyPolicy.isDutyCommandText(policy, text)) {
     const reply = await handleDutyForward({
       command: text, openId: senderId, chatType: 'p2p', chatId: message.chat_id,
       messageId: message.message_id,

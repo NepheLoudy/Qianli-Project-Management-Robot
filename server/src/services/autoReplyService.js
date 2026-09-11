@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const config = require('../config');
 const keywordService = require('./keywordService');
+const dutyPolicy = require('./dutyPolicyService');
 const bot = require('../feishu/bot');
 
 // 两张本地回答表（同一份「关键词回答表.xlsx」的两个工作表，由 scripts/syncAutoReplies.js 生成）：
@@ -171,6 +172,12 @@ async function processMessageEvent(event) {
   // 全群生效（含财务审批群）：命中即回复；审批群未命中时由 chatService 维持财务引导语
   if (!isChatAllowed(message.chat_id)) {
     return { matched: false, reason: '非目标群' };
+  }
+
+  // 值日域管辖策略：管辖群按 duty-bot 下发的生效范畴决定关键词放行（非管辖群恒放行）
+  const dutyPol = await dutyPolicy.getDutyPolicy();
+  if (!dutyPolicy.keywordAllowedInGroup(dutyPol, message.chat_id)) {
+    return { matched: false, reason: '值日管辖群未放行关键词' };
   }
 
   // 其他应用/机器人发出的消息不触发（防 webhook 播报卡片、机器人互答造成循环）

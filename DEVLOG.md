@@ -353,3 +353,14 @@
 - 删除死代码：`collectByCategory`（早期平铺方案残留，全仓无调用者）、`hasQualifiedDescendant`（被新函数取代）。
 - 不受影响（已核对）：逾期确认链路（cron 只收 `ddlCategory==='overdue'`，overdue 树仍完整含全部逾期节点）；工单分栏（ticket-bot 域，超期+临期混栏是既有设计，未动）；`/test-ddl` 补发与 `/history` 计数（口径变得更准）。
 - 验证：本地桩测 15 项断言全过（传 `preloadedProjects` 不触网：机械组式跨类容器两栏互斥、合格父项跨类当容器、分栏计数一致、逾期确认仍收全、`fullHierarchy`/`paused` 不变）；`node -e "require('./src/config')"` 通过。
+
+### v68 · 2026-09-11 · 3501bb5 · feat
+
+**值日专用群（快递申领群）关键词自动回答放行——群监听"占得太死"松绑**
+
+- 背景：v65/v66 把 DUTY_CHAT_ID 群设为"仅放行值日助手"后，群里 @机器人发关键词彩蛋被 🧹 提示顶掉（NAS 日志实录：@「大狗大狗请叫叫」→ 值日分支拦截）、未@关键词也全哑火；用户反馈"占得太死"，要求恢复之前的关键词自动回答能力。
+- `chatService.handleDutyBranch` 分支②：@消息先认「值日助手」出看板（不变）；新增 `buildMentionReplyForText` 关键词命中照常回答（先「@触发回答」后「关键词回答」，与他群 @ 命中同款，日志行「值日群关键词自动回复命中」）；未命中回改写后的值日群引导语（不再声称"仅开放看板"，改为"关键词彩蛋照常有效"）。基础指令（/help、/print-* 等）仍在分支②被拦，保持关闭。
+- `autoReplyService.isChatAllowed`：删除 DUTY_CHAT_ID 硬排除（v66 引入），值日群未@关键词命中照常回答，与他群口径一致（未命中静默）。
+- 不受影响：p2p 值日指令/图片转发、「值日助手」看板 1h 限流、审批群财务路由、晚间静默（关键词回答属对话回路，不在播报闸门范围）、网关层（duty-bot 仍不消费消息事件，改动全在 hub 内部闸门）。
+- 文档同步：根 AGENTS.md 值日专用群裁定行、qianli-chat-architecture SKILL.md 架构图、dashboard/registry.js hub permissions、README §9 生效范围（值日群例外说明）、ticket-pm/LOGIC-MAP §2.4 值日分支条目、server/.env.example 与 config.js 注释。
+- 回归：stub-test-duty-branch 扩至 17 项断言全过（新增：@关键词回答且不转发 duty、未@关键词命中并回复、/help 与普通对话回新引导语、/help 不再返回帮助内容；原有值日助手看板/p2p 指令/图片转发/私聊白名单断言不变）。

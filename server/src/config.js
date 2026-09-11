@@ -75,8 +75,8 @@ module.exports = {
     serviceUrl: process.env.APPROVAL_SERVICE_URL || 'http://localhost:3002',
   },
   duty: {
-    // 值日服务（duty-bot :3006）：值日指令/图片转发；chatId 即值日专用群
-    //（快递申领群：hub 基础指令关闭，放行「值日助手」看板与关键词回答）
+    // 值日服务（duty-bot :3006）：值日指令/图片转发 + 管辖策略源（GET /api/duty/policy）。
+    // 值日域管辖范畴/生效范畴以 duty-bot 下发为准；chatId 仅作 hub 失联兜底与预留播报目标
     serviceUrl: process.env.DUTY_SERVICE_URL || 'http://localhost:3006',
     chatId: process.env.DUTY_CHAT_ID || '',
   },
