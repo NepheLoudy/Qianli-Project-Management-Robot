@@ -137,6 +137,26 @@ app.get('/api/logs', async (req, res) => {
   }
 });
 
+// 定制窗口（规则见顶层 AGENTS「机器人后端定制窗口」）：定制项全景只读
+app.get('/api/hub/policy', (req, res) => {
+  res.json({
+    bot: { name: config.bot.name },
+    approvalGroup: { chatId: config.approval.chatId, serviceUrl: config.approval.serviceUrl },
+    duty: {
+      serviceUrl: config.duty.serviceUrl,
+      fallbackChatId: config.duty.chatId,
+      policySource: `${config.duty.serviceUrl}/api/duty/policy`,
+    },
+    autoReply: { chatIdsRaw: config.autoReply.chatIdsRaw || '*', tables: ['autoReplies.json', 'autoRepliesMention.json'] },
+    keywordListening: { chatId: config.keyword.chatId || '(全部群)' },
+    meetingChatIds: config.meeting.chatIds,
+    p2pCommandAllow: { openIdCount: config.p2pCommandAllow.openIds.length, chatIdCount: config.p2pCommandAllow.chatIds.length },
+    broadcastGroups: (config.broadcastGroups || []).map((g) => ({ key: g.key, chatId: g.chatId, label: g.label, hasWebhook: Boolean(g.webhookUrl) })),
+    cron: { ddlBroadcast: config.cron.schedule },
+    ddl: config.ddl,
+  });
+});
+
 app.get('/api/keywords/config', (req, res) => {
   try {
     const config = keywordService.loadKeywordsConfig();
