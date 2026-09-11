@@ -24,8 +24,11 @@ function buildFallbackPolicy() {
       keywordPassthrough: true,
       fallbackGuidance: DEFAULT_GUIDANCE,
     },
-    p2pCommands: ['值日助手', '我要请假', '查询我的下一次值日', '是', '否', '生成排班表'],
-    p2pCommandPrefixes: ['绑定'],
+    p2pCommands: [
+      '值日助手', '我要请假', '查询我的下一次值日', '是', '否', '生成排班表',
+      '/值日助手', '/我要请假', '/查询我的下一次值日', '/是', '/否', '/生成排班表',
+    ],
+    p2pCommandPrefixes: ['绑定', '/绑定'],
     source: 'fallback',
   };
 }
