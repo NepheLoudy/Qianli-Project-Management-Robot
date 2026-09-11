@@ -328,33 +328,26 @@ async function getDDLForBroadcastWithHierarchy(filter = 'all', preloadedProjects
 
   const prunedHierarchy = pruneTree(hierarchy);
 
-  function collectByCategory(items) {
-    const result = { overdue: [], urgent: [], week: [] };
+  // 各分栏按类过滤成各自的子树：只保留本类合格节点与通往它们的祖先容器。
+  // 不能整树下发再靠渲染区分——renderTreeNode 只看节点自身 ddlCategory，
+  // 父组名下跨类时同一棵子树会被原样画进多个分栏（逾期/2天内两栏内容重复的根因）。
+  // hasChildren 按过滤结果重算：自身合格但子项全被滤掉的节点降级为叶子行，
+  // 否则会渲染成空组头，丢掉自己的状态文案。
+  // isQualified 同步收敛为本类合格：跨类充当容器的节点不再被 countQualifiedNodes
+  // 计入本栏数量，保证分栏标题的 N 与栏内可见行数一致。
+  function filterTreeByCategory(items, category) {
+    const filtered = [];
 
     items.forEach(item => {
-      if (item.isQualified) {
-        if (item.ddlCategory === 'overdue') result.overdue.push(item);
-        else if (item.ddlCategory === 'urgent') result.urgent.push(item);
-        else if (item.ddlCategory === 'week') result.week.push(item);
-      }
-
-      if (item.children && item.children.length > 0) {
-        const childResult = collectByCategory(item.children);
-        result.overdue.push(...childResult.overdue);
-        result.urgent.push(...childResult.urgent);
-        result.week.push(...childResult.week);
-      }
+      const children = item.children && item.children.length > 0
+        ? filterTreeByCategory(item.children, category)
+        : [];
+      const selfMatch = item.isQualified && item.ddlCategory === category;
+      if (!selfMatch && children.length === 0) return;
+      filtered.push({ ...item, children, hasChildren: children.length > 0, isQualified: selfMatch });
     });
 
-    return result;
-  }
-
-  function hasQualifiedDescendant(node, category) {
-    if (node.ddlCategory === category) return true;
-    if (node.children && node.children.length > 0) {
-      return node.children.some(child => hasQualifiedDescendant(child, category));
-    }
-    return false;
+    return filtered;
   }
 
   // pending: 意外暂停的项目，不参与 DDL 分类，单独收集后在卡片中单独说明
@@ -362,9 +355,9 @@ async function getDDLForBroadcastWithHierarchy(filter = 'all', preloadedProjects
   const pausedProjects = allProjects.filter(p => p.status === 'pending' && passesFilter(p));
 
   return {
-    overdue: prunedHierarchy.filter(n => hasQualifiedDescendant(n, 'overdue')),
-    urgent: prunedHierarchy.filter(n => hasQualifiedDescendant(n, 'urgent')),
-    week: prunedHierarchy.filter(n => hasQualifiedDescendant(n, 'week')),
+    overdue: filterTreeByCategory(prunedHierarchy, 'overdue'),
+    urgent: filterTreeByCategory(prunedHierarchy, 'urgent'),
+    week: filterTreeByCategory(prunedHierarchy, 'week'),
     paused: pausedProjects,
     fullHierarchy: prunedHierarchy,
   };

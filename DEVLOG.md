@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v64**（2026-09-10，随本提交落地）。
+当前最新：**v67**（2026-09-11，随本提交落地）。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -343,3 +343,13 @@
 - `.env.example` 补 DUTY_SERVICE_URL / DUTY_CHAT_ID / DUTY_WEBHOOK_URL / DUTY_BROADCAST_SCHEDULE
 - quietHours 积压文件支持 QUIET_BACKLOG_FILE 挪出项目目录（SFTP 部署清目录不再丢积压；本次仅加能力，生产路径待运维定）
 - 回归：stub-test-duty-branch 10 项全过
+
+### v67 · 2026-09-11 · 随本提交落地 · fix
+
+**DDL 播报「已逾期 / 2天内到期」两栏内容重复修复（跨栏泄漏）**
+
+- 根因：`getDDLForBroadcastWithHierarchy` 三栏返回的是同一棵剪枝树按「根节点有无该类后代」（`hasQualifiedDescendant`）过滤的结果——父组名下跨类（既有逾期子项又有临期子项，或父项自身逾期、子项临期）时，同一根节点同时进多个数组；而 `renderTreeNode` 只看节点自身 `ddlCategory`、永远画整棵子树 → 同一棵子树在两栏逐字节重复，连分栏计数（`countQualifiedNodes` 数整棵子树合格节点）都一样。
+- 修复：`server/src/services/projectService.js` 新增 `filterTreeByCategory`——三个分栏（overdue/urgent/week）改为各自按类过滤后的独立子树：只保留本类合格节点与通往它们的祖先容器（容器照旧渲染 📁 组头）；`hasChildren` 按过滤结果重算（自身合格但子项全被滤掉的节点降级为叶子行，保住自己的状态文案，不再渲染成空组头）；`isQualified` 同步收敛为本类合格（跨类充当容器的节点不再被计入本栏数量，分栏标题 N 与栏内可见行数一致）。
+- 删除死代码：`collectByCategory`（早期平铺方案残留，全仓无调用者）、`hasQualifiedDescendant`（被新函数取代）。
+- 不受影响（已核对）：逾期确认链路（cron 只收 `ddlCategory==='overdue'`，overdue 树仍完整含全部逾期节点）；工单分栏（ticket-bot 域，超期+临期混栏是既有设计，未动）；`/test-ddl` 补发与 `/history` 计数（口径变得更准）。
+- 验证：本地桩测 15 项断言全过（传 `preloadedProjects` 不触网：机械组式跨类容器两栏互斥、合格父项跨类当容器、分栏计数一致、逾期确认仍收全、`fullHierarchy`/`paused` 不变）；`node -e "require('./src/config')"` 通过。
