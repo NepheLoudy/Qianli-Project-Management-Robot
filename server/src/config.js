@@ -40,6 +40,11 @@ module.exports = {
     appId: process.env.APP_ID || '',
     appSecret: process.env.APP_SECRET || '',
   },
+  plaza: {
+    // 动态广场事件流（机器人项目看板「动态广场」表，供多维表格仪表盘展示）
+    appToken: process.env.PLAZA_BITABLE_APP_TOKEN || 'ZlVZbXDkRayUzSsFRiycznmZn5b',
+    tableId: process.env.PLAZA_BITABLE_TABLE_ID || 'tbld1zHXkTzko20p',
+  },
   bitable: {
     appToken: process.env.BITABLE_APP_TOKEN || '',
     projectTableId: process.env.BITABLE_PROJECT_TABLE_ID || '',

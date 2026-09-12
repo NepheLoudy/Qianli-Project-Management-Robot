@@ -421,3 +421,10 @@
 - `dutyPolicyService.isManagedGroup` 空数组语义改为「不限制」，与 duty-bot 判定口径对齐（原「空=无管辖群」，env 漏配时全群失效、与 duty-bot 行为分叉）；失联兜底仍按本仓 `DUTY_CHAT_ID`。兜底 p2pCommands 同步镜像打卡变体。
 - 回答表写窗口保留词校验：`autoReplyService.upsertRule` 拒绝与值日域保留词（`dutyPolicyService.dutyReservedWords()`：看板/打卡/请假/绑定等，去斜杠归一）互为子串的关键词，路由 400 返回——防往关键词回答表加含「值日/是」的词后在管辖群截胡值日语义。
 - stub 测试（scripts/stub-test-duty-branch.js）扩到 34 项：斜杠形态、载荷 messageId、@+纯图片静默、非管辖群提示、空群口径、变体接管/落回、保留词拒绝（拒绝发生在落盘前）全断言，全过。
+
+### v75 · 2026-09-12 · 随本提交落地 · feat
+
+**DDL 播报事件写入动态广场 + push.js 运行时数据保护**
+
+- 动态广场：DDL 播报成功送达后写机器人项目看板「动态广场」表（送达群数/逾期/紧急/本周，`config.plaza` 默认表内置可覆盖）；失败仅 warn 不影响播报。
+- 【运行时数据保护】push.js 上传 `autoReplies.local.json` 前：①NAS 现网版本自动备份到 `/home/qianli/knowledge-tracker-data/backup/`；②本地条目数少于现网时跳过上传并自动回填本地（`PUSH_FORCE_PRIVATE=1` 才强制覆盖）——运维台定制窗口直写 NAS 的回答表不再可能被本地种子覆盖（同 duty-bot whitelist 事故整改，规则见顶层 AGENTS「运行时数据保护」）。

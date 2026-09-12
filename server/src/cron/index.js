@@ -7,6 +7,7 @@ const ddlConfirmService = require('../services/ddlConfirmService');
 const ticketCloseService = require('../services/ticketCloseService');
 const config = require('../config');
 const quietHours = require('../utils/quietHours');
+const plaza = require('../services/plaza');
 
 const broadcastHistory = [];
 
@@ -161,6 +162,11 @@ async function runDDLBroadcast() {
       if (deliveredGroups.size > 0) {
         lastBroadcastDate = today;
         saveBroadcastState(today);
+        plaza.append({
+          event: 'DDL 播报',
+          title: `DDL 播报送达 ${deliveredGroups.size} 群：逾期 ${groupStats[0]?.overdue ?? 0} · 紧急 ${groupStats[0]?.urgent ?? 0} · 本周 ${groupStats[0]?.week ?? 0}`,
+          count: groupStats[0]?.overdue ?? 0,
+        });
       }
 
       broadcastHistory.unshift({

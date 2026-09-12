@@ -222,18 +222,64 @@ function uploadEnv() {
   });
 }
 
-// 关键词回答私有覆盖（含真实成员姓名，不进 git；git 路径部署仓库里没有，必须显式 SFTP）
+// 关键词回答私有覆盖（含真实成员姓名，不进 git；git 路径部署仓库里没有，必须显式 SFTP）。
+// 【运行时数据保护】权威编辑路径在 NAS 侧（运维台定制窗口直写 .local.json），本地是种子：
+// 上传前先备份 NAS 现网版本；本地条目数少于现网时跳过上传（PUSH_FORCE_PRIVATE=1 强制覆盖）。
+const PRIVATE_DATA_DIR = '/home/qianli/knowledge-tracker-data';
+
+function countEntries(content) {
+  if (!content || !content.trim()) return 0;
+  try {
+    const obj = JSON.parse(content);
+    const arrays = Object.values(obj).filter((v) => Array.isArray(v));
+    if (arrays.length) return arrays.reduce((sum, a) => sum + a.length, 0);
+    return Object.keys(obj).length;
+  } catch {
+    return Math.floor(content.length / 100);
+  }
+}
+
 function uploadPrivateConfigs(sftp) {
-  const localPath = path.join(__dirname, 'server', 'src', 'config', 'autoReplies.local.json');
+  const relPath = 'server/src/config/autoReplies.local.json';
+  const localPath = path.join(__dirname, relPath);
   if (!require('fs').existsSync(localPath)) return restart();
-  sftp.fastPut(localPath, REMOTE_DIR + '/server/src/config/autoReplies.local.json', (err2) => {
-    if (err2) {
-      console.error('autoReplies.local.json 上传失败:', err2.message);
-      conn.end();
-      process.exit(1);
+  const remotePath = REMOTE_DIR + '/' + relPath;
+  sftp.readFile(remotePath, 'utf8', (err, remoteContent) => {
+    const fs = require('fs');
+    const localContent = fs.readFileSync(localPath, 'utf8');
+    const remoteCount = err ? 0 : countEntries(remoteContent);
+    const localCount = countEntries(localContent);
+
+    const backupThen = (next) => {
+      if (err || !remoteContent.trim() || remoteContent === localContent) return next();
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const backupPath = PRIVATE_DATA_DIR + '/backup/' + relPath.replace(/\//g, '_') + '.' + ts + '.bak';
+      return exec('mkdir -p ' + PRIVATE_DATA_DIR + '/backup', () => {
+        sftp.writeFile(backupPath, remoteContent, (err3) => {
+          if (err3) console.warn(`⚠ autoReplies.local.json 现网备份失败（继续上传）:`, err3.message);
+          else console.log(`✓ 现网版本已备份: ${backupPath}`);
+          next();
+        });
+      });
+    };
+
+    if (remoteCount > localCount && process.env.PUSH_FORCE_PRIVATE !== '1') {
+      console.warn(`⚠ [私有配置保护] 跳过 autoReplies.local.json 上传：本地 ${localCount} 条 < NAS 现网 ${remoteCount} 条（本地种子过期，权威在 NAS 侧）。`);
+      console.warn('  确认要用本地覆盖请设 PUSH_FORCE_PRIVATE=1 重跑；NAS 现网内容已回填本地以防丢失。');
+      fs.writeFileSync(localPath, remoteContent);
+      return restart();
     }
-    console.log('✓ autoReplies.local.json 已上传到 NAS（私有回答表，仅存于 NAS）');
-    restart();
+    backupThen(() => {
+      sftp.fastPut(localPath, remotePath, (err2) => {
+        if (err2) {
+          console.error('autoReplies.local.json 上传失败:', err2.message);
+          conn.end();
+          process.exit(1);
+        }
+        console.log('✓ autoReplies.local.json 已上传到 NAS（私有回答表，仅存于 NAS）');
+        restart();
+      });
+    });
   });
 }
 
