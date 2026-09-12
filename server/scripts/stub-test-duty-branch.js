@@ -26,7 +26,7 @@ function defaultPolicy() {
       groupBoardCommand: '值日助手',
       closeBasicCommands: true,
       keywordPassthrough: true,
-      fallbackGuidance: '🧹 本群为值日/快递申领专用群：@我 发送「值日助手」查看今日值日，关键词彩蛋照常有效\n（查询排班、请假、打卡确认请私信机器人）',
+      fallbackGuidance: '🧹 @我 发送「值日助手」查看今日值日\n查询排班、请假、打卡确认请私信机器人',
     },
     p2pCommands: [
       '值日助手', '我要请假', '查询我的下一次值日', '是', '否', '生成排班表',
@@ -149,17 +149,17 @@ function unAtEvent(text, msgId, chatId = 'oc_duty_group_test') {
 
   // ② 值日管辖群：基础指令按策略关闭（值日群引导语）
   await chatService.processChatMessage(groupEvent('/help', 'm2'));
-  check('值日群「/help」→ 值日群引导语', captured.botReplies.some((r) => r.messageId === 'm2' && r.text.includes('值日/快递申领专用群')));
+  check('值日群「/help」→ 值日群引导语', captured.botReplies.some((r) => r.messageId === 'm2' && r.text.includes('查看今日值日')));
   check('值日群「/help」未返回帮助内容', !captured.botReplies.some((r) => r.messageId === 'm2' && r.text.includes('可用指令')));
 
   // ③ 值日管辖群：未命中关键词的普通对话 → 引导语（不进欢迎语流程）
   await chatService.processChatMessage(groupEvent('你好呀', 'm3'));
-  check('值日群普通对话 → 值日群引导语', captured.botReplies.some((r) => r.messageId === 'm3' && r.text.includes('值日/快递申领专用群')));
+  check('值日群普通对话 → 值日群引导语', captured.botReplies.some((r) => r.messageId === 'm3' && r.text.includes('查看今日值日')));
 
   // ③′ 值日管辖群：@ 关键词命中 → 关键词回答放行（不转发 duty、非引导语）
   await chatService.processChatMessage(groupEvent('大狗大狗请叫叫', 'm3k'));
   const m3k = captured.botReplies.find((r) => r.messageId === 'm3k');
-  check('值日群 @关键词 → 关键词回答（非引导语）', !!m3k && !m3k.text.includes('值日/快递申领专用群') && !m3k.text.includes('占位回执'), m3k && m3k.text);
+  check('值日群 @关键词 → 关键词回答（非引导语）', !!m3k && !m3k.text.includes('查看今日值日') && !m3k.text.includes('占位回执'), m3k && m3k.text);
   check('值日群 @关键词 未被转发到值日服务', !captured.dutyPayloads.some((p) => (p.command || '').includes('大狗')));
 
   // ③″ 值日管辖群：未@消息关键词命中 → 照常自动回答（策略 keywordPassthrough）
@@ -220,13 +220,13 @@ function unAtEvent(text, msgId, chatId = 'oc_duty_group_test') {
   policyState.payload = { ...defaultPolicy(), groupChatIds: [] };
   dutyPolicy.resetCacheForTests();
   await chatService.processChatMessage(groupEvent('/help', 'm9e', 'oc_outsider_group'));
-  check('空管辖群列表 → 任意群按管辖群对待（基础指令关闭回引导语）', captured.botReplies.some((r) => r.messageId === 'm9e' && r.text.includes('值日/快递申领专用群')));
+  check('空管辖群列表 → 任意群按管辖群对待（基础指令关闭回引导语）', captured.botReplies.some((r) => r.messageId === 'm9e' && r.text.includes('查看今日值日')));
 
   // ⑩ 策略关关键词放行：@关键词回引导语、未@关键词不再回复
   policyState.payload = { ...defaultPolicy(), hubEnforcement: { ...defaultPolicy().hubEnforcement, keywordPassthrough: false } };
   dutyPolicy.resetCacheForTests();
   await chatService.processChatMessage(groupEvent('大狗大狗请叫叫', 'm10a'));
-  check('策略关关键词：@关键词 → 引导语', captured.botReplies.some((r) => r.messageId === 'm10a' && r.text.includes('值日/快递申领专用群')));
+  check('策略关关键词：@关键词 → 引导语', captured.botReplies.some((r) => r.messageId === 'm10a' && r.text.includes('查看今日值日')));
   const r10 = await autoReplyService.processMessageEvent(unAtEvent('小狗小狗', 'm10b'));
   check('策略关关键词：未@命中 → 不回复', r10.matched === false && (r10.reason || '').includes('值日管辖群'), JSON.stringify(r10));
 
@@ -248,7 +248,7 @@ function unAtEvent(text, msgId, chatId = 'oc_duty_group_test') {
   policyState.payload = 'FAIL';
   dutyPolicy.resetCacheForTests();
   await chatService.processChatMessage(groupEvent('你好呀', 'm13a'));
-  check('duty-bot 失联：兜底策略仍管辖 env 配置群', captured.botReplies.some((r) => r.messageId === 'm13a' && r.text.includes('值日/快递申领专用群')));
+  check('duty-bot 失联：兜底策略仍管辖 env 配置群', captured.botReplies.some((r) => r.messageId === 'm13a' && r.text.includes('查看今日值日')));
   await chatService.processChatMessage(p2pEvent('我要请假', 'm13b'));
   check('duty-bot 失联：兜底 p2p 清单仍放行值日指令', captured.dutyPayloads.some((p) => p.command === '我要请假' && p.messageId === 'm13b'));
 

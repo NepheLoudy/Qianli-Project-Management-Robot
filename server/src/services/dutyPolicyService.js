@@ -11,7 +11,9 @@ const POLICY_TTL_MS = 60 * 1000;        // 下发策略缓存
 const FALLBACK_TTL_MS = 15 * 1000;      // 兜底策略缓存（短暂后重试拉取）
 const POLICY_TIMEOUT_MS = 2000;
 
-const DEFAULT_GUIDANCE = '🧹 本群为值日/快递申领专用群：@我 发送「值日助手」查看今日值日，关键词彩蛋照常有效\n（查询排班、请假、打卡确认请私信机器人）';
+// 与 duty-bot GROUP_GUIDANCE 同文案（仅断联兜底用，改口径两仓同批）；
+// 文案原则：只写「应该怎么做」，不通告能力范围
+const DEFAULT_GUIDANCE = '🧹 @我 发送「值日助手」查看今日值日\n查询排班、请假、打卡确认请私信机器人';
 
 let cache = { policy: null, fetchedAt: 0 };
 

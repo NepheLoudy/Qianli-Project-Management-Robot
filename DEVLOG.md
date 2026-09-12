@@ -441,3 +441,10 @@
 **tar 打包排除回答表 .local.json（堵住 SFTP 兜底路径绕过守卫的漏洞）**
 
 - 同 duty-bot v12：SFTP 兜底部署先清 `server/*` 再解 tar，本地 autoReplies.local.json 会抢在守卫前覆盖 NAS 现网（v76 恰走该路径）。两份回答表 .local.json 加入 tar 排除，改由 uploadPrivateConfigs 的备份+守卫路径唯一写入。
+
+### v78 · 2026-09-12 · 随本提交落地 · fix
+
+**值日群兜底引导语同步 duty-bot v13 纯行动指引口径**
+
+- DEFAULT_GUIDANCE 与 duty-bot GROUP_GUIDANCE 改为同一句：删「本群为值日/快递申领专用群」「关键词彩蛋照常有效」说明性内容，只留看板触发 + 私信办理（策略下发正常时本兜底不参与，断联时才生效，仍须与下发口径一致）。
+- stub-test-duty-branch：mock 策略 fallbackGuidance 随更；6 处引导语断言指纹「值日/快递申领专用群」→「查看今日值日」，全过。
