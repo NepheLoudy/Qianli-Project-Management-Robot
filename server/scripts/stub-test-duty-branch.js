@@ -25,7 +25,7 @@ function defaultPolicy() {
     hubEnforcement: {
       groupBoardCommand: '值日助手',
       closeBasicCommands: true,
-      keywordPassthrough: true,
+      // keywordPassthrough 已随 v82 移除（关键词回答全群统一，hub 不再读取该 flag）
       fallbackGuidance: '🧹 @我 发送「值日助手」查看今日值日\n查询排班、请假、打卡确认请私信机器人',
     },
     p2pCommands: [
@@ -162,7 +162,7 @@ function unAtEvent(text, msgId, chatId = 'oc_duty_group_test') {
   check('值日群 @关键词 → 关键词回答（非引导语）', !!m3k && !m3k.text.includes('查看今日值日') && !m3k.text.includes('占位回执'), m3k && m3k.text);
   check('值日群 @关键词 未被转发到值日服务', !captured.dutyPayloads.some((p) => (p.command || '').includes('大狗')));
 
-  // ③″ 值日管辖群：未@消息关键词命中 → 照常自动回答（策略 keywordPassthrough）
+  // ③″ 值日管辖群：未@消息关键词命中 → 照常自动回答（关键词回答全群统一）
   const autoResult = await autoReplyService.processMessageEvent(unAtEvent('小狗小狗', 'm3u'));
   check('值日群未@关键词 → 自动回答命中', autoResult.matched === true, JSON.stringify(autoResult));
   check('值日群未@关键词 → 已回复', captured.botReplies.some((r) => r.messageId === 'm3u' && r.text.length > 0));

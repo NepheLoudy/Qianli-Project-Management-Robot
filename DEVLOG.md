@@ -482,3 +482,9 @@
 - 值日助手触发口径不变的事实收敛：群看板本来就只在 @ 路径（processChatMessage 未@早退），本次把口径成文并清除与之冲突的旧机制。
 - 测试：stub-test-duty-branch 重写 ⑩ 场景（管辖群 @/未@ 关键词照常回答）、⑭ 改为「含值日助手的规则不再被拒」（upsert 后 deleteRule 清理，不污染真实回答表）；duty stub-test-policy 同步去 flag 断言；两套全过。
 - README（回答表校验说明）、LOGIC-MAP §2.4、registry hub notes 同步。
+
+### v83 · 2026-09-13 · 随本提交落地 · docs
+
+**文档重审订正：README DDL 确认时效口径（全量文档重审批，无代码改动）**
+
+- README「待确认记录 7 天自动过期清理」→「12 小时时效（可配）过期清除；超时次日 12:00 播报重新询问」——v81 改代码后 README 未跟，全量文档重审发现订正。stub-test-duty-branch 的 keywordPassthrough fixture 与注释同步标记为已移除机制。
