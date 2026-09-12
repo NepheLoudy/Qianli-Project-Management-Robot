@@ -435,3 +435,9 @@
 
 - `server/.env.example` 的 `DUTY_WEBHOOK_URL`/`DUTY_BROADCAST_SCHEDULE` 加注：为 pm-robot M4「昨日值日播报」预留（代码未接线）；数据接口 duty-bot `GET /api/duty/brief` 已就绪待消费。防止后续清理误删或误当死键。
 - 同批：顶层 AGENTS 新增「机器人项目看板数据联动」节与定制窗口现状纠偏、deploy skill 补 duty-bot 行/私有配置守卫/顶层远端说明、ticket-pm AGENTS 补契约 6/7（均为顶层文档，随顶层 v48 归档）。
+
+### v77 · 2026-09-12 · 随本提交落地 · fix
+
+**tar 打包排除回答表 .local.json（堵住 SFTP 兜底路径绕过守卫的漏洞）**
+
+- 同 duty-bot v12：SFTP 兜底部署先清 `server/*` 再解 tar，本地 autoReplies.local.json 会抢在守卫前覆盖 NAS 现网（v76 恰走该路径）。两份回答表 .local.json 加入 tar 排除，改由 uploadPrivateConfigs 的备份+守卫路径唯一写入。

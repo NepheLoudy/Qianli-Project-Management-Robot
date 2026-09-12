@@ -160,6 +160,8 @@ async function deployCode() {
       '--exclude=node_modules',
       '--exclude=.git',
       '--exclude=.env',
+      '--exclude=server/src/config/autoReplies.local.json',
+      '--exclude=server/src/config/autoRepliesMention.local.json',
       '--exclude=logs',
       '--exclude=*.log',
       '--exclude=' + TAR_NAME,
