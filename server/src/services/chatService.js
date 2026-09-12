@@ -147,13 +147,11 @@ async function handleDutyBranch(message, { isGroup, text, senderId }) {
     if (!text) {
       return { handled: true, reply: '' };
     }
-    // 关键词回答照常放行：先「@触发回答」后「关键词回答」，与其它群 @ 命中同款
-    if (enforce.keywordPassthrough !== false) {
-      const autoHit = autoReplyService.buildMentionReplyForText(text);
-      if (autoHit) {
-        console.log('[对话服务] 值日群关键词自动回复命中:', autoHit.keywords.join('/'), `(表: ${autoHit.source})`);
-        return { handled: true, reply: autoHit.text };
-      }
+    // 关键词回答与其它群完全一致（2026-09-13 口径：未@/@关键词回答全群统一，不再有放行开关）
+    const autoHit = autoReplyService.buildMentionReplyForText(text);
+    if (autoHit) {
+      console.log('[对话服务] 值日群关键词自动回复命中:', autoHit.keywords.join('/'), `(表: ${autoHit.source})`);
+      return { handled: true, reply: autoHit.text };
     }
     if (enforce.closeBasicCommands !== false) {
       return {

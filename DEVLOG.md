@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v81**（2026-09-13，随本提交落地）。
+当前最新：**v82**（2026-09-13，随本提交落地）。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -472,3 +472,13 @@
 - 新增 `GET /api/ddl/pending`：当前有未过期确认的成员 open_id 名单（duty-bot 18:30 询问冲突提示消费）。
 - 确认私信文案补时效说明与「超时未回复明日再提醒」。
 - 背景：值日打卡主词改「打卡」（duty v16）后「是」基本只剩 DDL 确认一个语义；时效把陈旧确认的误抢窗口从 7 天压缩到 12 小时。
+
+### v82 · 2026-09-13 · 随本提交落地 · refactor
+
+**未@关键词回答全群统一 + 值日助手仅 @/私聊（用户拍板，配 duty v18）**
+
+- 关键词回答不再有值日群专属放行开关：autoReplyService 删除 `keywordAllowedInGroup` 门禁——未@关键词回答**全群统一**（值日群与其他群行为一致）；chatService ② 分支的 @关键词回答同步去掉 `keywordPassthrough` 条件。
+- 保留词撞车校验移除：`assertNoDutyConflict`/`dutyReservedWords`/`keywordAllowedInGroup` 整链删除（hub + duty policy 双侧的 `keywordPassthrough` flag 一并清理）——撞车根源已随「值日助手仅 @/私聊」消失：看板是 @ 精确词、p2p 指令是私聊专属，群内未@关键词回答与之无交集，回答表用词不再受限。
+- 值日助手触发口径不变的事实收敛：群看板本来就只在 @ 路径（processChatMessage 未@早退），本次把口径成文并清除与之冲突的旧机制。
+- 测试：stub-test-duty-branch 重写 ⑩ 场景（管辖群 @/未@ 关键词照常回答）、⑭ 改为「含值日助手的规则不再被拒」（upsert 后 deleteRule 清理，不污染真实回答表）；duty stub-test-policy 同步去 flag 断言；两套全过。
+- README（回答表校验说明）、LOGIC-MAP §2.4、registry hub notes 同步。

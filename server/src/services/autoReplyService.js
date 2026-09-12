@@ -2,7 +2,6 @@ const fs = require('fs');
 const path = require('path');
 const config = require('../config');
 const keywordService = require('./keywordService');
-const dutyPolicy = require('./dutyPolicyService');
 const bot = require('../feishu/bot');
 
 // 两张本地回答表（同一份「关键词回答表.xlsx」的两个工作表，由 scripts/syncAutoReplies.js 生成）：
@@ -203,27 +202,9 @@ function saveRules(table, replies, enabled) {
   return getRules(table);
 }
 
-/** 值日域保留词撞车校验：回答表按「包含关键词」匹配，关键词若与值日指令词
- *  互为子串，管辖群里 @值日语义会被彩蛋抢先（看板/打卡词被截胡）——写入时直接拒绝 */
-function assertNoDutyConflict(keywords) {
-  const reserved = dutyPolicy.dutyReservedWords();
-  const hits = keywords.filter((kw) => {
-    const k = String(kw).trim().toLowerCase();
-    if (!k) return false;
-    return reserved.some((w) => {
-      const r = w.toLowerCase();
-      return r.includes(k) || k.includes(r);
-    });
-  });
-  if (hits.length > 0) {
-    throw new Error(`关键词与值日域保留词冲突（${hits.join('、')}）：看板/打卡等值日指令词已被值日分支占用，请换用其他关键词`);
-  }
-}
-
 /** 新增/更新规则（按关键词组整体匹配，忽略大小写与顺序） */
 function upsertRule(table, rule) {
   const norm = normalizeRuleInput(rule);
-  assertNoDutyConflict(norm.keywords);
   const current = getRules(table);
   const replies = current.replies.slice();
   const key = ruleKey(norm.keywords);
@@ -269,12 +250,6 @@ async function processMessageEvent(event) {
   // 全群生效（含财务审批群）：命中即回复；审批群未命中时由 chatService 维持财务引导语
   if (!isChatAllowed(message.chat_id)) {
     return { matched: false, reason: '非目标群' };
-  }
-
-  // 值日域管辖策略：管辖群按 duty-bot 下发的生效范畴决定关键词放行（非管辖群恒放行）
-  const dutyPol = await dutyPolicy.getDutyPolicy();
-  if (!dutyPolicy.keywordAllowedInGroup(dutyPol, message.chat_id)) {
-    return { matched: false, reason: '值日管辖群未放行关键词' };
   }
 
   // 其他应用/机器人发出的消息不触发（防 webhook 播报卡片、机器人互答造成循环）

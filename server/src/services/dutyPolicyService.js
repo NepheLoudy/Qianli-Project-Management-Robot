@@ -23,7 +23,6 @@ function buildFallbackPolicy() {
     hubEnforcement: {
       groupBoardCommand: '值日助手',
       closeBasicCommands: true,
-      keywordPassthrough: true,
       fallbackGuidance: DEFAULT_GUIDANCE,
     },
     p2pCommands: [
@@ -76,22 +75,6 @@ function isDutyCommandText(policy, text) {
   return cmds.includes(text) || prefixes.some((p) => text.startsWith(p));
 }
 
-// 未@关键词路径的放行判定：非管辖群恒放行（走通用口径），管辖群看策略开关
-function keywordAllowedInGroup(policy, chatId) {
-  if (!isManagedGroup(policy, chatId)) return true;
-  return policy.hubEnforcement.keywordPassthrough !== false;
-}
-
-// 值日域保留词（归一去斜杠后的静态清单，取内置兜底策略而非实时下发——
-// 校验口径不随 duty-bot 在线改写漂移）：回答表关键词撞车校验用
-function dutyReservedWords() {
-  const p = buildFallbackPolicy();
-  const words = [p.hubEnforcement.groupBoardCommand, ...p.p2pCommands, ...p.p2pCommandPrefixes]
-    .map((w) => String(w).replace(/^\//, '').trim())
-    .filter(Boolean);
-  return [...new Set(words)];
-}
-
 // stub 测试用：清空策略缓存，强制下一次重新拉取
 function resetCacheForTests() {
   cache = { policy: null, fetchedAt: 0 };
@@ -101,8 +84,6 @@ module.exports = {
   getDutyPolicy,
   isManagedGroup,
   isDutyCommandText,
-  keywordAllowedInGroup,
   buildFallbackPolicy,
-  dutyReservedWords,
   resetCacheForTests,
 };

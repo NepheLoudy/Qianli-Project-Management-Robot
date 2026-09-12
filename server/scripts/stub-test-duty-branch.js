@@ -4,7 +4,7 @@
  *      「看板触发词」转发（裸词/带 / 双形态）、载荷 messageId、关键词回答放行
  *      （@与未@，策略开关）、基础指令关闭、@+纯图片静默、非管辖群值日指令提示、
  *      空管辖群列表=不限制、p2p 值日指令放行（策略清单）、打卡口语变体接管/落回、
- *      p2p 图片最小转发、回答表保留词冲突校验、非值日能力不受影响。
+ *      p2p 图片最小转发、非值日能力不受影响；回答表保留词校验已随「未@关键词回答全群统一」口径移除（2026-09-13）。
  * 运行：node scripts/stub-test-duty-branch.js
  */
 const http = require('http');
@@ -222,13 +222,11 @@ function unAtEvent(text, msgId, chatId = 'oc_duty_group_test') {
   await chatService.processChatMessage(groupEvent('/help', 'm9e', 'oc_outsider_group'));
   check('空管辖群列表 → 任意群按管辖群对待（基础指令关闭回引导语）', captured.botReplies.some((r) => r.messageId === 'm9e' && r.text.includes('查看今日值日')));
 
-  // ⑩ 策略关关键词放行：@关键词回引导语、未@关键词不再回复
-  policyState.payload = { ...defaultPolicy(), hubEnforcement: { ...defaultPolicy().hubEnforcement, keywordPassthrough: false } };
-  dutyPolicy.resetCacheForTests();
+  // ⑩ 关键词回答全群统一（2026-09-13）：策略不再有放行开关——值日管辖群的 @/未@ 关键词命中照常回答
   await chatService.processChatMessage(groupEvent('大狗大狗请叫叫', 'm10a'));
-  check('策略关关键词：@关键词 → 引导语', captured.botReplies.some((r) => r.messageId === 'm10a' && r.text.includes('查看今日值日')));
+  check('管辖群 @关键词 → 照常回答（与其它群一致）', captured.botReplies.some((r) => r.messageId === 'm10a' && !r.text.includes('查看今日值日')));
   const r10 = await autoReplyService.processMessageEvent(unAtEvent('小狗小狗', 'm10b'));
-  check('策略关关键词：未@命中 → 不回复', r10.matched === false && (r10.reason || '').includes('值日管辖群'), JSON.stringify(r10));
+  check('管辖群 未@关键词 → 照常回答（全群统一）', r10.matched === true && r10.replied === true, JSON.stringify(r10));
 
   // ⑪ 策略不关基础指令：@/help 落回常规指令流程
   policyState.payload = { ...defaultPolicy(), hubEnforcement: { ...defaultPolicy().hubEnforcement, closeBasicCommands: false } };
@@ -255,22 +253,17 @@ function unAtEvent(text, msgId, chatId = 'oc_duty_group_test') {
   policyState.payload = null;
   dutyPolicy.resetCacheForTests();
 
-  // ⑭ 回答表保留词冲突校验（值日域保留词；拒绝发生在落盘前，不写 .local.json）
-  const reserved = dutyPolicy.dutyReservedWords();
-  check('值日保留词清单包含看板/打卡/绑定词', ['值日助手', '是', '我要请假', '绑定'].every((w) => reserved.includes(w)));
-  let conflictErr = '';
-  try {
-    autoReplyService.upsertRule('group', { keywords: ['值日'], answer: '冲突测试' });
-  } catch (err) { conflictErr = err.message; }
-  check('关键词「值日」被保留词校验拒绝（保留词子串）', conflictErr.includes('值日域保留词冲突'), conflictErr);
-  let conflictErr2 = '';
-  try {
-    autoReplyService.upsertRule('mention', { keywords: ['是不是'], answer: '冲突测试' });
-  } catch (err) { conflictErr2 = err.message; }
-  check('关键词「是不是」被保留词校验拒绝（包含「是」）', conflictErr2.includes('值日域保留词冲突'), conflictErr2);
+  // ⑭ 回答表关键词不再做保留词校验（2026-09-13 口径：值日助手仅@/私聊、未@关键词回答全群统一，无撞车面）
+  {
+    let ok = true, err = '';
+    try {
+      autoReplyService.upsertRule('group', { keywords: ['值日助手'], answersText: '测试回答' });
+    } catch (e) { ok = false; err = e.message; }
+    check('回答表关键词含「值日助手」不再被拒（保留词校验已移除）', ok, err);
+    try { autoReplyService.deleteRule('group', ['值日助手']); } catch { /* 清理失败不影响断言 */ }
+  }
 
-  dutyServer.close();
-  console.log(failed === 0 ? '\n全部通过 ✅' : `\n${failed} 项失败 ❌`);
+  console.log(failed === 0 ? '全部通过 ✅' : failed + ' 项失败 ❌');
   process.exit(failed === 0 ? 0 : 1);
 })().catch((err) => {
   console.error('测试执行异常:', err);
