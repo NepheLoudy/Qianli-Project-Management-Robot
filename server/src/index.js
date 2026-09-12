@@ -7,6 +7,7 @@ const { startCronJobs, runDDLBroadcast, getBroadcastHistory, getCronStatus } = r
 const logService = require('./services/logService');
 const keywordService = require('./services/keywordService');
 const autoReplyService = require('./services/autoReplyService');
+const ddlConfirmService = require('./services/ddlConfirmService');
 const { startEventSubscription, handleMessageEvent } = require('./feishu/eventSubscription');
 
 const app = express();
@@ -14,6 +15,16 @@ const app = express();
 app.use(cors());
 // 网关会转发完整消息事件（长文本/富文本可能超过默认 100kb），放宽 body 限制
 app.use(express.json({ limit: '2mb' }));
+
+// DDL 逾期确认冲突提示数据源（duty-bot 18:30 询问消费）：当前有未过期确认的成员名单
+app.get('/api/ddl/pending', (req, res) => {
+  const stats = ddlConfirmService.getPendingStats();
+  res.json({
+    windowHours: Number(process.env.DDL_CONFIRM_WINDOW_HOURS || 12),
+    openIds: [...new Set(stats.map((s) => s.ownerOpenId))],
+    count: stats.length,
+  });
+});
 
 app.get('/api/health', (req, res) => {
   res.json({

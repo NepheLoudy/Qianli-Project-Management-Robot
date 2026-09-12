@@ -9,8 +9,10 @@ const pendingConfirmations = new Map();
 // 消息去重 Set
 const processedMessageIds = new Set();
 
-// 待确认记录的最大保留时间（7天），防止无限堆积
-const PENDING_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+// 待确认记录的确认时效（2026-09-13 口径：确认私信发出后 N 小时内才认「是/否」；
+// 超时记录清除 → 项目保持原状态，次日 12:00 播报重新询问。默认 12 小时，DDL_CONFIRM_WINDOW_HOURS 可配
+const CONFIRM_WINDOW_HOURS = Number(process.env.DDL_CONFIRM_WINDOW_HOURS || 12);
+const PENDING_TTL_MS = CONFIRM_WINDOW_HOURS * 60 * 60 * 1000;
 
 function buildAtTag(openId, name) {
   return `<at user_id="${openId}">${name || '用户'}</at>`;
@@ -29,8 +31,10 @@ async function sendOverdueConfirmation(project) {
     return { sent: false, reason: '无 owner' };
   }
 
-  // 已存在该项目的待确认则跳过，避免重复发送
-  const existing = pendingConfirmations.get(ownerOpenId) || [];
+  // 先清掉该 owner 的过期待确认（超过时效未回复 = 自动放弃本轮，项目保持原状态、
+  // 次日播报重新询问），再做重复发送判定
+  const existing = (pendingConfirmations.get(ownerOpenId) || []).filter(p => Date.now() - p.sentAt < PENDING_TTL_MS);
+  pendingConfirmations.set(ownerOpenId, existing);
   if (existing.some(p => p.projectId === project.id)) {
     console.log('[DDL确认] 项目已有待确认记录，跳过:', project.name);
     return { sent: false, reason: '已存在待确认' };
@@ -49,8 +53,9 @@ async function sendOverdueConfirmation(project) {
     `• 已逾期：${overdueDays} 天`,
     ``,
     `请记得更新看板状态。该项目是否已完成？`,
-    `• 回复 "是" - 我会帮你把状态改为 completed`,
-    `• 回复 "否" - 状态保持不变，继续提醒`,
+    `• 回复 "是" - 我会帮你把状态改为 completed（请在 ${CONFIRM_WINDOW_HOURS} 小时内回复）`,
+    `• 回复 "否" - 状态保持不变`,
+    `• 超时未回复 - 状态保持不变，明日播报会再次提醒`,
   ].join('\n');
 
   try {
