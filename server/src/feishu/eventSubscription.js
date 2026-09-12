@@ -5,6 +5,7 @@ const autoReplyService = require('../services/autoReplyService');
 const chatService = require('../services/chatService');
 const ddlConfirmService = require('../services/ddlConfirmService');
 const meetingReminderService = require('../services/meetingReminderService');
+const dutyPolicyService = require('../services/dutyPolicyService');
 
 let wsClient = null;
 
@@ -71,11 +72,20 @@ async function handleMessageEvent(data) {
 
     // 会议提醒：仅检测会议卡片（video_chat / share_calendar / interactive 等，不含 share_chat 群聊分享）
     if (chatType === 'group') {
-      const meetingResult = await meetingReminderService.processMeetingMessage(data);
-      if (meetingResult.handled && meetingResult.triggered) {
-        console.log('[事件订阅] 会议提醒已触发 (会议卡片)');
-      } else if (meetingResult.handled && !meetingResult.triggered) {
-        console.log('[事件订阅] 会议提醒跳过:', meetingResult.reason);
+      // 值日管辖群群级功能全关（仅值日助手+关键词彩蛋），会议提醒也不例外；
+      // 注意用严格命中判定——groupChatIds 为空表示"未配置管辖群"而非"全群管辖"，
+      // 不能放大成全群跳过会议提醒
+      const dutyPolicy = await dutyPolicyService.getDutyPolicy();
+      const managedChatIds = Array.isArray(dutyPolicy.groupChatIds) ? dutyPolicy.groupChatIds : [];
+      if (managedChatIds.includes(chatId)) {
+        console.log('[事件订阅] 值日管辖群群级功能全关，跳过会议提醒 (chat_id:', chatId, ')');
+      } else {
+        const meetingResult = await meetingReminderService.processMeetingMessage(data);
+        if (meetingResult.handled && meetingResult.triggered) {
+          console.log('[事件订阅] 会议提醒已触发 (会议卡片)');
+        } else if (meetingResult.handled && !meetingResult.triggered) {
+          console.log('[事件订阅] 会议提醒跳过:', meetingResult.reason);
+        }
       }
     }
   } catch (err) {

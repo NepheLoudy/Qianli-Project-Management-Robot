@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v67**（2026-09-11，随本提交落地）。
+当前最新：**v79**（2026-09-12，随本提交落地）。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -410,7 +410,7 @@
 - 文档同步：README §8 检测类型去掉 share_chat（注明不触发）；eventSubscription.js 注释同步。
 - 回归：node 内联断言 11 项全过（share_chat 带/不带「会议」群名均不触发；video_chat / share_calendar / interactive 会议卡仍触发；按钮「加入群聊」不触发；containsMeetingLink 连续调用无状态残留）。
 
-### v74 · 2026-09-12 · 随本提交落地 · fix
+### v74 · 2026-09-12 · 106bc46 · fix
 
 **值日分支修复：群看板 / 形态可触发 + 载荷 messageId + 非管辖群提示 + 空群口径对齐 + 回答表保留词校验**
 
@@ -422,29 +422,38 @@
 - 回答表写窗口保留词校验：`autoReplyService.upsertRule` 拒绝与值日域保留词（`dutyPolicyService.dutyReservedWords()`：看板/打卡/请假/绑定等，去斜杠归一）互为子串的关键词，路由 400 返回——防往关键词回答表加含「值日/是」的词后在管辖群截胡值日语义。
 - stub 测试（scripts/stub-test-duty-branch.js）扩到 34 项：斜杠形态、载荷 messageId、@+纯图片静默、非管辖群提示、空群口径、变体接管/落回、保留词拒绝（拒绝发生在落盘前）全断言，全过。
 
-### v75 · 2026-09-12 · 随本提交落地 · feat
+### v75 · 2026-09-12 · 17d17bf · feat
 
 **DDL 播报事件写入动态广场 + push.js 运行时数据保护**
 
 - 动态广场：DDL 播报成功送达后写机器人项目看板「动态广场」表（送达群数/逾期/紧急/本周，`config.plaza` 默认表内置可覆盖）；失败仅 warn 不影响播报。
 - 【运行时数据保护】push.js 上传 `autoReplies.local.json` 前：①NAS 现网版本自动备份到 `/home/qianli/knowledge-tracker-data/backup/`；②本地条目数少于现网时跳过上传并自动回填本地（`PUSH_FORCE_PRIVATE=1` 才强制覆盖）——运维台定制窗口直写 NAS 的回答表不再可能被本地种子覆盖（同 duty-bot whitelist 事故整改，规则见顶层 AGENTS「运行时数据保护」）。
 
-### v76 · 2026-09-12 · 随本提交落地 · docs
+### v76 · 2026-09-12 · af964c9 · docs
 
 **.env.example 标注 M4 预留键（全仓规则复核批次）**
 
 - `server/.env.example` 的 `DUTY_WEBHOOK_URL`/`DUTY_BROADCAST_SCHEDULE` 加注：为 pm-robot M4「昨日值日播报」预留（代码未接线）；数据接口 duty-bot `GET /api/duty/brief` 已就绪待消费。防止后续清理误删或误当死键。
 - 同批：顶层 AGENTS 新增「机器人项目看板数据联动」节与定制窗口现状纠偏、deploy skill 补 duty-bot 行/私有配置守卫/顶层远端说明、ticket-pm AGENTS 补契约 6/7（均为顶层文档，随顶层 v48 归档）。
 
-### v77 · 2026-09-12 · 随本提交落地 · fix
+### v77 · 2026-09-12 · f5febd8 · fix
 
 **tar 打包排除回答表 .local.json（堵住 SFTP 兜底路径绕过守卫的漏洞）**
 
 - 同 duty-bot v12：SFTP 兜底部署先清 `server/*` 再解 tar，本地 autoReplies.local.json 会抢在守卫前覆盖 NAS 现网（v76 恰走该路径）。两份回答表 .local.json 加入 tar 排除，改由 uploadPrivateConfigs 的备份+守卫路径唯一写入。
 
-### v78 · 2026-09-12 · 随本提交落地 · fix
+### v78 · 2026-09-12 · 6328555 · fix
 
 **值日群兜底引导语同步 duty-bot v13 纯行动指引口径**
 
 - DEFAULT_GUIDANCE 与 duty-bot GROUP_GUIDANCE 改为同一句：删「本群为值日/快递申领专用群」「关键词彩蛋照常有效」说明性内容，只留看板触发 + 私信办理（策略下发正常时本兜底不参与，断联时才生效，仍须与下发口径一致）。
 - stub-test-duty-branch：mock 策略 fallbackGuidance 随更；6 处引导语断言指纹「值日/快递申领专用群」→「查看今日值日」，全过。
+
+### v79 · 2026-09-12 · 随本提交落地 · fix
+
+**值日管辖群会议提醒关闭 + 静默积压外迁落地（全量 debug 批）**
+
+- 会议提醒补管辖闸门：eventSubscription 群聊管道末端的会议卡片提醒此前对含值日管辖群在内的所有群照常运行，与「值日群群级功能全关（仅值日助手+关键词彩蛋）」口径不符。现按 duty-bot 下发 groupChatIds **严格命中**跳过（空列表=未配置管辖群，不放大到全群）。
+- 静默积压外迁：`.env` 配置 `QUIET_BACKLOG_FILE=/home/qianli/hub-data/quiet-backlog.json`（此前只有代码能力未配路径，SFTP 兜底清目录仍会丢积压）；quietHours 补启动自动建目录（对齐 ticket-bot v61 版本）+ 换址一次性迁移（项目内旧积压文件存在且新文件未落下时自动搬运，旧文件保留不删）；`.env.example` 补键。
+- DEVLOG 哈希回填：v74（106bc46）/ v75（17d17bf）/ v76（af964c9）/ v77（f5febd8）/ v78（6328555）；头部「当前最新」指针 v67 → v79。
+- 回归：stub-test-duty-branch 全过。

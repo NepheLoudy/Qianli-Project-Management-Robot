@@ -22,6 +22,20 @@ const path = require('path');
 
 // 可用 QUIET_BACKLOG_FILE 挪到项目目录外（SFTP 部署会清空项目目录，部署即丢积压）
 const BACKLOG_FILE = process.env.QUIET_BACKLOG_FILE || path.join(__dirname, '..', '..', '.quiet-backlog.json');
+// 项目外的数据目录无人预建，加载时确保存在
+try { fs.mkdirSync(path.dirname(BACKLOG_FILE), { recursive: true }); } catch { /* 写入失败时 saveBacklog 自会 warn */ }
+// 换址一次性迁移：配置了项目外路径但新文件还没落下的，把项目内旧积压搬过去（旧文件保留不删）
+if (process.env.QUIET_BACKLOG_FILE && !fs.existsSync(BACKLOG_FILE)) {
+  try {
+    const legacyFile = path.join(__dirname, '..', '..', '.quiet-backlog.json');
+    if (fs.existsSync(legacyFile)) {
+      fs.copyFileSync(legacyFile, BACKLOG_FILE);
+      console.log('[晚间静默] 已把项目内旧积压迁移到', BACKLOG_FILE);
+    }
+  } catch (err) {
+    console.warn('[晚间静默] 旧积压迁移失败（按空处理）:', err.message);
+  }
+}
 const TZ_OFFSET_MS = 8 * 60 * 60 * 1000; // Asia/Shanghai 无夏令时，固定 UTC+8
 const MAX_ATTEMPTS = 3;
 const FLUSH_ROUNDS = 10;
