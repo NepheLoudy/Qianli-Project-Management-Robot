@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v79**（2026-09-12，随本提交落地）。
+当前最新：**v80**（2026-09-13，随本提交落地）。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -457,3 +457,9 @@
 - 静默积压外迁：`.env` 配置 `QUIET_BACKLOG_FILE=/home/qianli/hub-data/quiet-backlog.json`（此前只有代码能力未配路径，SFTP 兜底清目录仍会丢积压）；quietHours 补启动自动建目录（对齐 ticket-bot v61 版本）+ 换址一次性迁移（项目内旧积压文件存在且新文件未落下时自动搬运，旧文件保留不删）；`.env.example` 补键。
 - DEVLOG 哈希回填：v74（106bc46）/ v75（17d17bf）/ v76（af964c9）/ v77（f5febd8）/ v78（6328555）；头部「当前最新」指针 v67 → v79。
 - 回归：stub-test-duty-branch 全过。
+
+### v80 · 2026-09-13 · 随本提交落地 · docs
+
+**M4 预留键注释口径更新（docs，无代码改动）**
+
+- M4「昨日值日播报」已由 duty-bot 自身看板卡实现（昨日战报段，值日群播报，duty v15）；`.env.example` 的 `DUTY_WEBHOOK_URL`/`DUTY_BROADCAST_SCHEDULE` 注释改为「保留备用：如未来把播报迁到 hub 再启用」。hub 无代码改动。
