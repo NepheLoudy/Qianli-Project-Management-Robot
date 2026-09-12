@@ -428,3 +428,10 @@
 
 - 动态广场：DDL 播报成功送达后写机器人项目看板「动态广场」表（送达群数/逾期/紧急/本周，`config.plaza` 默认表内置可覆盖）；失败仅 warn 不影响播报。
 - 【运行时数据保护】push.js 上传 `autoReplies.local.json` 前：①NAS 现网版本自动备份到 `/home/qianli/knowledge-tracker-data/backup/`；②本地条目数少于现网时跳过上传并自动回填本地（`PUSH_FORCE_PRIVATE=1` 才强制覆盖）——运维台定制窗口直写 NAS 的回答表不再可能被本地种子覆盖（同 duty-bot whitelist 事故整改，规则见顶层 AGENTS「运行时数据保护」）。
+
+### v76 · 2026-09-12 · 随本提交落地 · docs
+
+**.env.example 标注 M4 预留键（全仓规则复核批次）**
+
+- `server/.env.example` 的 `DUTY_WEBHOOK_URL`/`DUTY_BROADCAST_SCHEDULE` 加注：为 pm-robot M4「昨日值日播报」预留（代码未接线）；数据接口 duty-bot `GET /api/duty/brief` 已就绪待消费。防止后续清理误删或误当死键。
+- 同批：顶层 AGENTS 新增「机器人项目看板数据联动」节与定制窗口现状纠偏、deploy skill 补 duty-bot 行/私有配置守卫/顶层远端说明、ticket-pm AGENTS 补契约 6/7（均为顶层文档，随顶层 v48 归档）。
