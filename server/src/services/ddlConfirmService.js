@@ -244,6 +244,7 @@ async function handleReply(event) {
     }
   }
 
+  usageReport.report(senderId, 'DDL确认');
   return { handled: true, reply };
 }
 

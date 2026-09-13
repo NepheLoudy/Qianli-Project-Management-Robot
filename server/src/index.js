@@ -8,6 +8,7 @@ const logService = require('./services/logService');
 const keywordService = require('./services/keywordService');
 const autoReplyService = require('./services/autoReplyService');
 const ddlConfirmService = require('./services/ddlConfirmService');
+const { requireApiToken } = require('./auth');
 const { startEventSubscription, handleMessageEvent } = require('./feishu/eventSubscription');
 
 const app = express();
@@ -206,7 +207,7 @@ app.get('/api/autoreplies/rules', (req, res) => {
   res.json(autoReplyService.getRules(normTable(req.query.table)));
 });
 
-app.post('/api/autoreplies/rules', (req, res) => {
+app.post('/api/autoreplies/rules', requireApiToken, (req, res) => {
   try {
     const { table, rule } = req.body || {};
     res.json({ ok: true, result: autoReplyService.upsertRule(normTable(table), rule) });
@@ -215,7 +216,7 @@ app.post('/api/autoreplies/rules', (req, res) => {
   }
 });
 
-app.post('/api/autoreplies/rules/delete', (req, res) => {
+app.post('/api/autoreplies/rules/delete', requireApiToken, (req, res) => {
   try {
     const { table, keywords } = req.body || {};
     res.json({ ok: true, result: autoReplyService.deleteRule(normTable(table), keywords) });
@@ -224,7 +225,7 @@ app.post('/api/autoreplies/rules/delete', (req, res) => {
   }
 });
 
-app.post('/api/autoreplies/enabled', (req, res) => {
+app.post('/api/autoreplies/enabled', requireApiToken, (req, res) => {
   try {
     const { table, enabled } = req.body || {};
     res.json({ ok: true, result: autoReplyService.setTableEnabled(normTable(table), enabled) });

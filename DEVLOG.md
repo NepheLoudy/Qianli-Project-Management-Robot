@@ -496,3 +496,11 @@
 1. getPendingStats 不清理过期记录——不活跃 owner 的过期确认永久混进 /api/ddl/pending，值日询问被无限期附加错误冲突提示（且 Map 泄漏）——统计前先 cleanupExpired。
 2. 更新项目失败后 pending 回塞排在失败通知发送之后——通知再失败时记录丢失且异常逃逸——先回塞、通知单独 try/catch。
 3. p2p 待确认匹配不区分项目——同 owner 多项目时「是」恒完成第一条（写错项目）——同来源多条取最近发送的一条。
+
+### v85 · 2026-09-13 · 随本提交落地 · feat
+
+**统计归因上报 + 管理端点鉴权 + 部署前测试闸门（体系推荐 R2/R4/统计覆盖规则）**
+
+- 关键词回答命中（@与未@）与 DDL 确认回复上报网关 /api/usage/report（usageReport.js，fire-and-forget）——队员活跃/功能统计自动覆盖这两类此前不可见的交互。
+- 新增 src/auth.js：/api/autoreplies/rules*、/api/autoreplies/enabled、/api/keywords/config、/api/projects、/api/bot/test-broadcast、/api/logs 写/配置端点需 X-API-Token（fail-closed）。运维台代理自动带头。
+- push.js 加部署前测试闸门：stub-test-duty-branch 全过才部署。

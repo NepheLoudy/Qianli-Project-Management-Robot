@@ -3,6 +3,7 @@ const path = require('path');
 const config = require('../config');
 const keywordService = require('./keywordService');
 const bot = require('../feishu/bot');
+const usageReport = require('./usageReport');
 
 // 两张本地回答表（同一份「关键词回答表.xlsx」的两个工作表，由 scripts/syncAutoReplies.js 生成）：
 //   group   「关键词回答」：未@机器人的群消息命中即回（群里 @机器人 时作为回落表）
@@ -273,6 +274,8 @@ async function processMessageEvent(event) {
   if (!hit) {
     return { matched: false, reason: '未命中关键词' };
   }
+  const reporterOpenId = (event.sender && event.sender.sender_id && (event.sender.sender_id.open_id || event.sender.sender_id.user_id)) || '';
+  usageReport.report(reporterOpenId, '关键词回答');
 
   try {
     try {

@@ -20,6 +20,25 @@ const path = require('path');
 
 // 轻量读取 server/.env 中的 NAS_* 配置（根目录无 dotenv 依赖，不额外安装）
 const envText = require('fs').readFileSync(path.join(__dirname, 'server', '.env'), 'utf8');
+// ---------- [0] 部署前测试闸门（2026-09-13 R4）：测试不过不部署；SKIP_TESTS=1 可跳过 ----------
+function runTestGate() {
+  if (process.env.SKIP_TESTS === '1') {
+    console.log('SKIP_TESTS=1，跳过部署前测试');
+    return true;
+  }
+  const { spawnSync } = require('child_process');
+  const cmd = 'node server/scripts/stub-test-duty-branch.js';
+  if (!cmd) { console.log('[测试闸门] 无测试命令，跳过'); return true; }
+  console.log('[测试闸门] 运行:', cmd);
+  const r = spawnSync(cmd, { shell: true, stdio: 'inherit', cwd: __dirname });
+  if (r.status !== 0) {
+    console.error('部署前测试未通过（SKIP_TESTS=1 可跳过），中止部署');
+    return false;
+  }
+  console.log('[测试闸门] 通过');
+  return true;
+}
+if (!runTestGate()) process.exit(1);
 for (const line of envText.split('\n')) {
   const m = line.match(/^\s*(NAS_[A-Z_]+)\s*=\s*(.*)\s*$/);
   if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2].trim();
