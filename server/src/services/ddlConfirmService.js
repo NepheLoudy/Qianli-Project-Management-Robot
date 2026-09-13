@@ -149,15 +149,16 @@ async function handleReply(event) {
   // 找到匹配的待确认项目。
   // 来源必须与发送方式一致：私聊发出的确认只能私聊回复（群聊里含「是/否」的
   // 日常消息不得被当成确认），群聊发出的只能在同一个群里回复
-  const pendingIndex = pendingList.findIndex(p => {
-    if (p.sentMode === 'p2p') {
-      return chatType === 'p2p';
-    }
-    if (p.sentMode === 'group') {
-      return chatType === 'group' && p.chatId && p.chatId === replyChatId;
-    }
-    return false;
-  });
+  // 候选按回复来源过滤；同一来源多条待确认（同 owner 多项目）取「最近发送的一条」——
+  // 用户总是针对最新一条提醒回复（2026-09-13：原先 findIndex 恒取第一条，多项目时「是」会完成错的项目）
+  const candidateIdx = pendingList
+    .map((p, i) => ({ p, i }))
+    .filter(({ p }) => (p.sentMode === 'p2p'
+      ? chatType === 'p2p'
+      : (p.sentMode === 'group' && chatType === 'group' && p.chatId && p.chatId === replyChatId)));
+  const pendingIndex = candidateIdx.length === 0
+    ? -1
+    : candidateIdx.reduce((best, cur) => (cur.p.sentAt > pendingList[best].sentAt ? cur.i : best), candidateIdx[0].i);
 
   if (pendingIndex === -1) {
     // 没有匹配的待确认项目（可能是群聊串行）
@@ -218,15 +219,20 @@ async function handleReply(event) {
       }
     } catch (err) {
       console.error(`[DDL确认] 更新项目状态失败 (${pending.projectName}):`, err.message);
-      let failText = `❌ 更新项目 "${pending.projectName}" 状态失败：${err.message}\n请手动在看板中更新。`;
-      if (chatType === 'p2p' || !targetChatId) {
-        await bot.sendTextToUser(senderId, failText);
-      } else {
-        await bot.sendTextToChat(targetChatId, `${buildAtTag(senderId, pending.ownerName)} ${failText}`);
-      }
+      // 先把待确认记录塞回（2026-09-13）：失败通知若再发送失败，记录不丢——次日播报仍可重问
       const list = pendingConfirmations.get(senderId) || [];
       list.push(pending);
       pendingConfirmations.set(senderId, list);
+      try {
+        let failText = `❌ 更新项目 "${pending.projectName}" 状态失败：${err.message}\n请手动在看板中更新。`;
+        if (chatType === 'p2p' || !targetChatId) {
+          await bot.sendTextToUser(senderId, failText);
+        } else {
+          await bot.sendTextToChat(targetChatId, `${buildAtTag(senderId, pending.ownerName)} ${failText}`);
+        }
+      } catch (sendErr) {
+        console.error('[DDL确认] 失败通知发送失败:', sendErr.message);
+      }
     }
   } else {
     console.log(`[DDL确认] 用户 ${senderId} 选择保持项目 "${pending.projectName}" 当前状态`);
@@ -267,6 +273,7 @@ function cleanupExpired() {
  * 获取当前待确认记录的统计（调试用）
  */
 function getPendingStats() {
+  cleanupExpired(); // 先清过期（2026-09-13）：否则不活跃 owner 的过期确认永久混进 /api/ddl/pending，值日询问被错误附加冲突提示
   const stats = [];
   for (const [ownerId, list] of pendingConfirmations.entries()) {
     for (const p of list) {
