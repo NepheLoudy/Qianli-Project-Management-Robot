@@ -95,16 +95,15 @@
 - 属对话回路（用户消息触发的即时应答），不受晚间静默窗口限制
 - `/status` 显示启用状态与两张表的条数
 
-### 10. 抽奖（/触发词 指令触发）
-- **玩法**：群里 @机器人 发「`/触发词`」（如 `/抽奖`）即从对应奖池按概率抽一条奖品文字原文回复；指令名 = 触发词，别名均可触发（如触发词格填 `抽奖,来一发`）；匹配不分大小写
-- **填写入口：项目根目录 `抽奖配置表.xlsx`**（「抽奖配置」工作表；详细规则见表内「使用说明」工作表）
-  - **一行 = 一个奖品**（内容多就多排几行，Excel 下拉填充触发词即可）；**同一触发词写多行 = 同一个奖池**（行序即奖池顺序）
-  - 「触发词」格内逗号/顿号/分号分隔别名，任一别名都能触发同一奖池；别名即指令名，别带空格
-  - 「奖品」列一格一个奖品，抽中的文字**原文回复**（表情/祝贺语直接写进奖品文字）
+### 10. 抽奖（/抽奖 指令 · 整表大奖池）
+- **玩法**：群里 @机器人 发「`/抽奖`」即从奖池按概率抽一条奖品文字原文回复；**一个指令对应整张奖池表，奖品行数不限**
+- **填写入口：项目根目录 `抽奖配置表.xlsx`**（「抽奖配置」工作表 = `/抽奖` 的大奖池）
+  - **只有「奖品」「概率」两列：一行 = 一个奖品**，想加奖品就往下加行（行数不限）
+  - 「奖品」列填奖品文字，抽中的文字**原文回复**（表情/祝贺语直接写进奖品文字）；以 `#` 开头的行 = 注释行不同步（兼容旧格式：行首任意列以 `#` 开头都视为注释）
   - 「概率」列 = 相对权重份数：0-100 的数（如 5 和 95 → 5%/95%）；留空 = 1（等概率参与）；0 = 永不抽中；总和不必凑满 100（自动归一化）
-  - 触发词以 `#` 开头的行 = 注释行不同步；触发词/奖品缺一则该行跳过并告警
-- 触发路径：chatService 指令分支的**动态指令**——静态指令表（/help /lottery 等）优先，未命中再查抽奖触发词，仍未命中才落 /print-* 与未知指令；值日管辖群同样可用（先于基础指令关闭的引导语）；**审批群不开放**（指令面固定 /approval-*）；私聊按指令白名单口径（非白名单不可用）
-- 指令动态进 `/help`（每个奖池一行，`/lottery` 查看奖池与概率）；`LOTTERY_CHAT_IDS` 可收窄生效群范围（留空或 `*` = 所有群）
+- **指令名**：默认「抽奖」，`server/.env` 的 `LOTTERY_COMMAND` 可改名（逗号分隔配多个别名，如 `抽奖,来一发`；改完 push 生效；同步脚本直接读该键写进 lottery.json）
+- 触发路径：chatService 指令分支的**动态指令**——静态指令表（/help /lottery 等）优先，未命中再查抽奖指令，仍未命中才落 /print-* 与未知指令；值日管辖群同样可用（先于基础指令关闭的引导语）；**审批群不开放**（指令面固定 /approval-*）；私聊按指令白名单口径
+- 指令动态进 `/help`；`/lottery` 查看奖池与概率；`LOTTERY_CHAT_IDS` 可收窄生效群范围（留空或 `*` = 所有群）；如需第二个抽奖指令，运维台定制窗口可另加奖池（`.local.json`，不随表格覆盖）
 - `npm run push` 开头自动同步（`scripts/syncLottery.js`，也可 `npm run sync:lottery` 只转存不部署）→ `server/src/config/lottery.json`（生成物，勿手改）；运行时每消息重读，**部署后改动即时生效，无需重启**
 - 定制窗口（顶层 AGENTS「机器人后端定制窗口」）：`GET /api/lottery/rules` 读当前生效规则（`.local.json` 优先）；`POST /api/lottery/rules`（`{keywords:[], answersText:"每行一条 奖品|概率"}`）新增/更新、`POST /api/lottery/rules/delete`（`{keywords:[]}`）删除、`POST /api/lottery/enabled`（`{enabled}`）启停（写端点均需 `X-API-Token`）。**改动写 `.local.json` 即时生效**；`npm run push` 会用本地版本覆盖该文件（备份+条数守卫同回答表），持久批量编辑仍以本地 `抽奖配置表.xlsx` 为准
 - 其它：命中向网关上报统计（feature=`抽奖`，队员活跃归因）；回复走指令统一回复链路（引用回复，失败降级直接发送）；属对话回路，不受晚间静默窗口限制
@@ -139,7 +138,7 @@ project-management-robot/
 │   │   │   ├── logService.js        # 维护日志服务
 │   │   │   ├── keywordService.js    # 关键词监听服务
 │   │   │   ├── autoReplyService.js  # 关键词自动回复服务（autoReplies.json + autoRepliesMention.json）
-│   │   │   ├── lotteryService.js    # 抽奖服务（lottery.json/.local.json，/触发词 动态指令集）
+│   │   │   ├── lotteryService.js    # 抽奖服务（lottery.json/.local.json，/抽奖 动态指令）
 │   │   │   ├── chatService.js       # 对话 / 指令服务
 │   │   │   ├── ddlConfirmService.js # 逾期确认服务
 │   │   │   ├── ticketCloseService.js # 工单分栏取数（主链路 API + 降级直读）
@@ -153,10 +152,10 @@ project-management-robot/
 │   ├── package.json
 │   └── .env.example
 ├── 关键词回答表.xlsx             # 关键词自动回答填写入口（「关键词回答」+「@触发回答」两个工作表，push 时各转一个 JSON）
-├── 抽奖配置表.xlsx               # 抽奖填写入口（触发词/奖品/概率，一行=一个奖品，push 时转 lottery.json）
+├── 抽奖配置表.xlsx               # 抽奖填写入口（奖品|概率 两列，整表=/抽奖 的大奖池，push 时转 lottery.json）
 ├── scripts/
 │   ├── syncAutoReplies.js        # 关键词回答表.xlsx → autoReplies(.Mention).json 转换脚本
-│   └── syncLottery.js            # 抽奖配置表.xlsx → lottery.json 转换脚本（一行=一个奖品，同触发词多行同池）
+│   └── syncLottery.js            # 抽奖配置表.xlsx → lottery.json 转换脚本（奖品|概率 两列，整表=一个大奖池）
 ├── push.js                       # 一键部署脚本（Git + NAS）
 ├── auto-deploy.js                # GitHub Actions 时代旧部署脚本（已不用，仅存档）
 └── README.md
