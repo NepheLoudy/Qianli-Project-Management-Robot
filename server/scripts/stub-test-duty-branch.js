@@ -5,8 +5,8 @@
  *      （@与未@，策略开关）、基础指令关闭、@+纯图片静默、非管辖群值日指令提示、
  *      空管辖群列表=不限制、p2p 值日指令放行（策略清单）、打卡口语变体接管/落回、
  *      p2p 图片最小转发、非值日能力不受影响；回答表保留词校验已随「未@关键词回答全群统一」口径移除（2026-09-13）；
- *      抽奖全群关键词链路（v86）：奖池抽取/权重 0、未@命中回复、管道级与回答表互斥、@ 路径最优先、
- *      /lottery 指令、启停窗口、CRUD（.local.json 测试后按原状恢复）。
+ *      抽奖动态指令集（v87）：/触发词 抽一次、奖池抽取/权重 0、普通群与值日群 @指令、未知指令不误吞、
+ *      /lottery 指令、/help 动态指令段与运维指令隐藏、启停窗口、CRUD（.local.json 测试后按原状恢复）。
  * 运行：node scripts/stub-test-duty-branch.js
  */
 const http = require('http');
@@ -77,10 +77,6 @@ const autoReplyService = require('../src/services/autoReplyService');
 const lotteryService = require('../src/services/lotteryService');
 const dutyPolicy = require('../src/services/dutyPolicyService');
 const config = require('../src/config');
-// 管道级互斥断言用（关键词监听写表在测试里不触网：仅替换 processMessageEvent 属性）
-const keywordService = require('../src/services/keywordService');
-keywordService.processMessageEvent = async () => ({ skipped: true, reason: 'stub 静默' });
-const eventSubscription = require('../src/feishu/eventSubscription');
 
 // 抽奖私有配置快照（测试写 .local.json，结束按原状恢复/删除，防止测试残留随 push 覆盖现网种子）
 const LOTTERY_LOCAL = path.join(__dirname, '../src/config/lottery.local.json');
@@ -276,56 +272,53 @@ function unAtEvent(text, msgId, chatId = 'oc_duty_group_test') {
     try { autoReplyService.deleteRule('group', ['值日助手']); } catch { /* 清理失败不影响断言 */ }
   }
 
-  // ===== 抽奖（全群关键词链路最优先，2026-09-14）=====
-  // 窗口 CRUD 造测试池（触发词避开示例池「抽奖」子串，防同消息双池命中）
-  lotteryService.upsertRule({ keywords: ['开抽测试'], answersText: '奖品甲|1\n奖品乙|9' });
-  lotteryService.upsertRule({ keywords: ['零权重'], answersText: '永不奖品|0\n必有奖品|5' });
+  // ===== 抽奖（动态指令集：/触发词 抽一次，2026-09-14 v87）=====
+  lotteryService.upsertRule({ keywords: ['开抽测试'], answersText: '奖品甲|1' + String.fromCharCode(10) + '奖品乙|9' });
+  lotteryService.upsertRule({ keywords: ['零权重'], answersText: '永不奖品|0' + String.fromCharCode(10) + '必有奖品|5' });
   check('抽奖 CRUD：窗口 upsert 后 getRules 含测试池', lotteryService.getRules().replies.some((r) => r.keywords.includes('开抽测试')));
 
   const prizeTexts = ['奖品甲', '奖品乙'];
   const draws = new Set();
   for (let i = 0; i < 300; i++) {
-    draws.add(lotteryService.buildDrawForText('来一轮开抽测试').text);
+    draws.add(lotteryService.drawForCommand('/开抽测试', 'oc_normal_group').text);
   }
-  check('抽奖：300 次抽取全部落在奖池内', [...draws].every((t) => prizeTexts.some((p) => t.includes(p))), [...draws].join(','));
-  check('抽奖：1/9 权重奖品 300 次内出现（非永不可中）', [...draws].some((t) => t.includes('奖品甲')));
+  check('抽奖指令：300 次抽取全部落在奖池内', [...draws].every((t) => prizeTexts.some((p) => t.includes(p))), [...draws].join(','));
+  check('抽奖指令：1/9 权重奖品 300 次内出现（非永不可中）', [...draws].some((t) => t.includes('奖品甲')));
 
   const zeroDraws = new Set();
   for (let i = 0; i < 200; i++) {
-    zeroDraws.add(lotteryService.buildDrawForText('零权重').text);
+    zeroDraws.add(lotteryService.drawForCommand('/零权重', 'oc_normal_group').text);
   }
-  check('抽奖：权重 0 = 永不抽中，非零权重 100% 抽中', [...zeroDraws].every((t) => t.includes('必有奖品') && !t.includes('永不奖品')), [...zeroDraws].join(','));
+  check('抽奖指令：权重 0 = 永不抽中，非零权重 100% 抽中', [...zeroDraws].every((t) => t.includes('必有奖品') && !t.includes('永不奖品')), [...zeroDraws].join(','));
 
-  // ⑮′ 未@路径：抽奖命中并回复
-  const rLot = await lotteryService.processMessageEvent(unAtEvent('来一轮开抽测试', 'mL1', 'oc_normal_group'));
-  check('抽奖：未@群消息命中并回复', rLot.matched === true && rLot.replied === true, JSON.stringify(rLot));
-  check('抽奖：回复内容来自奖池', prizeTexts.some((p) => captured.botReplies.some((r) => r.messageId === 'mL1' && r.text.includes(p))));
+  // 普通群 @/触发词 → 抽奖回复
+  await chatService.processChatMessage(groupEvent('/开抽测试', 'mL3', 'oc_normal_group'));
+  check('抽奖：普通群 @/开抽测试 → 回奖品', prizeTexts.some((p) => captured.botReplies.some((r) => r.messageId === 'mL3' && r.text.includes(p))));
 
-  // ⑯ 管道级互斥：未@消息同时命中抽奖触发词与关键词回答 → 只抽奖、不回回答表
-  autoReplyService.upsertRule('group', { keywords: ['开抽测试'], answersText: '回答表文本' });
-  await eventSubscription.handleMessageEvent(unAtEvent('来一轮开抽测试', 'mL2', 'oc_normal_group'));
-  const l2Replies = captured.botReplies.filter((r) => r.messageId === 'mL2');
-  check('抽奖×回答表互斥：管道只回一条', l2Replies.length === 1, JSON.stringify(l2Replies));
-  check('抽奖×回答表互斥：回的是奖品而非回答表文本', l2Replies.length === 1 && prizeTexts.some((p) => l2Replies[0].text.includes(p)) && !l2Replies[0].text.includes('回答表文本'), JSON.stringify(l2Replies));
-  autoReplyService.deleteRule('group', ['开抽测试']);
+  // 值日管辖群：抽奖指令先于基础指令关闭的引导语
+  await chatService.processChatMessage(groupEvent('/开抽测试', 'mL4', 'oc_duty_group_test'));
+  check('抽奖：值日管辖群 @/开抽测试 → 回奖品（先于引导语）', prizeTexts.some((p) => captured.botReplies.some((r) => r.messageId === 'mL4' && r.text.includes(p))));
 
-  // ⑰ @ 路径：普通群/值日管辖群 @消息含触发词 → 抽奖优先于回答表与引导语
-  await chatService.processChatMessage(groupEvent('开抽测试', 'mL3', 'oc_normal_group'));
-  check('抽奖：普通群 @触发词 → 回奖品', prizeTexts.some((p) => captured.botReplies.some((r) => r.messageId === 'mL3' && r.text.includes(p))));
-  await chatService.processChatMessage(groupEvent('开抽测试', 'mL4', 'oc_duty_group_test'));
-  check('抽奖：值日管辖群 @触发词 → 回奖品（先于引导语）', prizeTexts.some((p) => captured.botReplies.some((r) => r.messageId === 'mL4' && r.text.includes(p))));
+  // 未注册指令不落入抽奖，仍是未知指令提示
+  await chatService.processChatMessage(groupEvent('/胡说八道', 'mL4x', 'oc_normal_group'));
+  check('抽奖：未注册指令不误吞，仍回未知指令', captured.botReplies.some((r) => r.messageId === 'mL4x' && r.text.includes('未知指令')));
 
-  // ⑱ /lottery 指令可见奖池
+  // /lottery 指令可见奖池
   await chatService.processChatMessage(groupEvent('/lottery', 'mL5', 'oc_normal_group'));
   check('/lottery 指令：输出奖池与触发词', captured.botReplies.some((r) => r.messageId === 'mL5' && r.text.includes('抽奖奖池') && r.text.includes('开抽测试')));
 
-  // ⑲ 启停：setEnabled(false) 全链路不命中，恢复后照常
+  // /help：含抽奖动态指令段，运维/诊断指令不再展示
+  await chatService.processChatMessage(groupEvent('/help', 'mL5h', 'oc_normal_group'));
+  check('/help：含抽奖动态指令段', captured.botReplies.some((r) => r.messageId === 'mL5h' && r.text.includes('/开抽测试') && r.text.includes('抽一次奖')));
+  check('/help：不再展示运维指令（/status /test-ddl /keywords /autoreply /history）', captured.botReplies.some((r) => r.messageId === 'mL5h' && !r.text.includes('/test-ddl') && !r.text.includes('/autoreply') && !r.text.includes('/keywords') && !r.text.includes('/history') && !r.text.includes('/status')));
+
+  // 启停：停用后指令不命中（落未知指令提示），恢复后照常
   lotteryService.setEnabled(false);
-  check('抽奖启停：停用后 buildDrawForText 不命中', lotteryService.buildDrawForText('来一轮开抽测试') === null);
-  const rOff = await lotteryService.processMessageEvent(unAtEvent('来一轮开抽测试', 'mL6', 'oc_normal_group'));
-  check('抽奖启停：停用后未@路径不命中', rOff.matched === false);
+  check('抽奖启停：停用后 drawForCommand 不命中', lotteryService.drawForCommand('/开抽测试', 'oc_normal_group') === null);
+  await chatService.processChatMessage(groupEvent('/开抽测试', 'mL6', 'oc_normal_group'));
+  check('抽奖启停：停用后指令落未知指令提示', captured.botReplies.some((r) => r.messageId === 'mL6' && r.text.includes('未知指令')));
   lotteryService.setEnabled(true);
-  check('抽奖启停：恢复后照常命中', lotteryService.buildDrawForText('来一轮开抽测试') !== null);
+  check('抽奖启停：恢复后照常命中', lotteryService.drawForCommand('/开抽测试', 'oc_normal_group') !== null);
 
   // 清理：删测试池并按原状恢复 .local.json（测试残留不得随 push 上传覆盖现网种子）
   lotteryService.deleteRule(['开抽测试']);

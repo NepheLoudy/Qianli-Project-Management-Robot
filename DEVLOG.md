@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v86**（2026-09-14，随本提交落地）。
+当前最新：**v87**（2026-09-14，随本提交落地）。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -505,7 +505,7 @@
 - 新增 src/auth.js：/api/autoreplies/rules*、/api/autoreplies/enabled、/api/keywords/config、/api/projects、/api/bot/test-broadcast、/api/logs 写/配置端点需 X-API-Token（fail-closed）。运维台代理自动带头。
 - push.js 加部署前测试闸门：stub-test-duty-branch 全过才部署。
 
-### v86 · 2026-09-14 · 随本提交落地 · feat
+### v86 · 2026-09-14 · 00bcbaa · feat
 
 **抽奖系统上线：走关键词回答全群链路 + 本地抽奖配置表（触发词/奖品/概率）**
 
@@ -515,3 +515,13 @@
 - 定制窗口：`GET /api/lottery/rules` 读 + `POST /api/lottery/rules|rules/delete|enabled`（X-API-Token）热改写 `.local.json` 即时生效；`/api/hub/policy` 补 lottery 概览；push.js 私有上传泛化为清单（autoReplies + lottery，同套现网备份+条数守卫），tar 排除 lottery.local.json，部署前自动同步抽奖表。
 - 测试：stub-test-duty-branch 新增抽奖场景（奖池抽取/权重 0 永不中、未@命中回复、管道级与回答表互斥、普通群/值日群 @ 路径、/lottery、启停窗口、CRUD；测试写的 lottery.local.json 结束按原状恢复，防残留随 push 覆盖现网种子），全量通过。
 - 文档：README 新增第 10 节 + 项目树 + API 表 + 「测试」节；registry.js hub 窗口/指令/监听同步；.env.example 增 LOTTERY_CHAT_IDS；顶层 AGENTS 窗口现状行与用户指南 HTML/MD 同批更新。
+
+### v87 · 2026-09-14 · 随本提交落地 · refactor
+
+**抽奖改版：奖池一行=一个奖品 + 触发词升级为 /指令 + /help 精简运维指令（用户反馈三连改）**
+
+- **表格格式重做**（抽奖内容会很多）：`抽奖配置表.xlsx`「抽奖配置」改为**一行 = 一个奖品**（触发词 | 奖品 | 概率 三列），同一触发词写多行 = 同一奖池（Excel 下拉填充触发词即可）；触发词格内逗号/顿号/分号分隔别名。`scripts/syncLottery.js` 自带专用解析器（不再复用 syncAutoReplies 的 parseXlsx，后者还原）；概率=相对权重（留空=1、0=永不中、总和自动归一化）。
+- **触发方式改指令**（原「消息包含触发词」易误伤闲聊）：群里 @机器人 发「`/触发词`」即抽一次，别名均可触发、精确匹配。`lotteryService` 删除未@消息路径（processMessageEvent/buildDrawForText），新增 `drawForCommand(commandText, chatId)`（静态指令表未命中 → 抽奖动态指令 → /print-* → 未知指令）与 `listCommandHelp()`（动态进 /help，每奖池一行、别名并列）；值日管辖群同样放行（先于基础指令关闭引导语）；**审批群不开放**；私聊按指令白名单口径；eventSubscription 还原为仅关键词回答。`LOTTERY_CHAT_IDS` 口径不变。
+- **/help 精简**（有些功能不需要向群聊展示）：`/status /test-ddl /keywords /autoreply /history` 五个运维/诊断指令不再出现在群聊帮助里（仍可直接使用，README/registry 照登）；帮助分组改为「群聊指令（@我使用）+ 财务/打印/值日转发段」。
+- 测试：stub 抽奖场景重写为指令口径（指令抽取/权重 0、普通群与值日群 @指令、未注册指令不误吞、/lottery、/help 动态段与运维指令隐藏断言、启停、CRUD），全量通过。
+- 文档：README §5/§10、LOGIC-MAP 管道图与指令路径、registry、顶层 AGENTS、用户指南 HTML/MD 同批。

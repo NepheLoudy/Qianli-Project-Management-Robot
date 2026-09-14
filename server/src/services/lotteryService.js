@@ -1,24 +1,18 @@
 const fs = require('fs');
 const path = require('path');
 const config = require('../config');
-const keywordService = require('./keywordService');
-const bot = require('../feishu/bot');
-const usageReport = require('./usageReport');
 
 // 抽奖（server/src/config/lottery.json，由项目根目录「抽奖配置表.xlsx」经 scripts/syncLottery.js 生成）：
-// 走「关键词回答」同一条全群链路——未@机器人的群消息包含触发词即抽一次，按概率加权随机抽一条
-// 奖品文字原文回复。命中优先级最高：先于「@触发回答」「关键词回答」两张表（两处调用点互斥，
-// 同一条消息不会既抽奖又回关键词回答）。
+// 动态指令集——群里 @机器人 发「/触发词」即从对应奖池按概率加权随机抽一条奖品文字回复。
+// 触发词在表格里定义，一个奖池可带多个别名；指令由 chatService 指令分支调用（不在未@消息管道里，
+// 不会误伤普通聊天）。私有配置约定同 autoReplies：.local.json（gitignore；定制窗口热改写这里）优先。
 const LOTTERY_CONFIG_PATH = path.join(__dirname, '../config/lottery.json');
 
-// 隐私约定同 autoReplies：同名 .local.json（gitignore；定制窗口热改写这里）存在则优先加载，
-// 仓库只进表格同步出的脱敏模板
+// 隐私约定同 autoReplies：同名 .local.json 存在则优先加载，仓库只进表格同步出的模板
 function resolveConfigPath(configPath) {
   const localPath = configPath.replace(/\.json$/, '.local.json');
   return fs.existsSync(localPath) ? localPath : configPath;
 }
-
-const processedMessageIds = new Set();
 
 /** 读抽奖配置（运行时每消息重读，表格同步/窗口改动即时生效） */
 function loadLotteryConfig() {
@@ -42,8 +36,7 @@ function loadLotteryConfig() {
   }
 }
 
-// 生效群范围（同 AUTO_REPLY_CHAT_IDS 模式）：LOTTERY_CHAT_IDS 逗号分隔 chat_id；留空或 '*' = 所有群。
-// 抽奖只走群聊（@机器人/私聊不触发，私聊是对话回路）。
+// 生效群范围：LOTTERY_CHAT_IDS 逗号分隔 chat_id；留空或 '*' = 所有群（审批群由 chatService 审批分支天然排除）
 function isChatAllowed(chatId) {
   const raw = (config.lottery.chatIdsRaw || '').trim();
   if (!raw || raw === '*') return true;
@@ -65,89 +58,34 @@ function drawPrize(entry) {
   return answers[0].text;
 }
 
-function matchPools(text, replies) {
-  if (!text) return [];
-  const lower = text.toLowerCase();
-  return replies.filter(r => r.keywords.some(kw => lower.includes(String(kw).toLowerCase())));
-}
-
 /**
- * 纯抽奖（不发送、不上报）：命中多条规则时逐条各抽一条合并
- * @returns {{ keywords: string[], text: string } | null}
+ * 指令 → 奖池解析：commandText 为「/触发词」或「触发词」，按别名精确匹配（不分大小写）
+ * @returns {{ keywords: string[], text: string } | null} 命中则返回抽中的奖品文字
  */
-function buildDrawForText(text) {
+function drawForCommand(commandText, chatId) {
   const { enabled, replies } = loadLotteryConfig();
   if (!enabled || replies.length === 0) return null;
+  if (chatId && !isChatAllowed(chatId)) return null;
 
-  const lower = String(text || '').toLowerCase();
-  const matches = matchPools(text, replies);
-  if (matches.length === 0) return null;
+  const name = String(commandText || '').replace(/^\//, '').trim().toLowerCase();
+  if (!name) return null;
+  const pool = replies.find(r => r.keywords.some(kw => String(kw).toLowerCase() === name));
+  if (!pool) return null;
 
   return {
-    keywords: matches.flatMap(m => m.keywords.filter(kw => lower.includes(String(kw).toLowerCase()))),
-    text: matches.map(m => drawPrize(m).trim()).filter(Boolean).join('\n\n────────\n\n'),
+    keywords: pool.keywords,
+    text: drawPrize(pool).trim(),
   };
 }
 
-// 未@机器人的群消息抽奖入口（eventSubscription 在关键词回答表之前调用，命中则跳过回答表）
-async function processMessageEvent(event) {
-  const message = event.message;
-  if (!message) {
-    return { matched: false, reason: '无消息内容' };
-  }
-
+/** /help 动态指令段：每个奖池一行（第一个为主指令，其余为别名）；奖池为空或停用时返回空串 */
+function listCommandHelp() {
   const { enabled, replies } = loadLotteryConfig();
-  if (!enabled || replies.length === 0) {
-    return { matched: false, reason: '抽奖未启用或奖池为空' };
-  }
-
-  const chatType = message.chat_type || message.chatMode;
-  if (chatType !== 'group') {
-    return { matched: false, reason: '非群聊' };
-  }
-
-  if (!isChatAllowed(message.chat_id)) {
-    return { matched: false, reason: '非目标群' };
-  }
-
-  // 其他应用/机器人发出的消息不触发（防播报卡片、机器人互抽循环）
-  if (event.sender?.sender_type === 'app') {
-    return { matched: false, reason: '应用消息跳过' };
-  }
-
-  if (message.message_id) {
-    if (processedMessageIds.has(message.message_id)) {
-      return { matched: false, reason: '重复消息' };
-    }
-    processedMessageIds.add(message.message_id);
-    if (processedMessageIds.size > 1000) {
-      const firstKey = processedMessageIds.values().next().value;
-      processedMessageIds.delete(firstKey);
-    }
-  }
-
-  const text = keywordService.extractTextContent(message);
-  const hit = buildDrawForText(text);
-  if (!hit) {
-    return { matched: false, reason: '未命中触发词' };
-  }
-
-  const reporterOpenId = (event.sender && event.sender.sender_id && (event.sender.sender_id.open_id || event.sender.sender_id.user_id)) || '';
-  usageReport.report(reporterOpenId, '抽奖');
-
-  try {
-    try {
-      await bot.replyTextMessage(message.message_id, hit.text);
-    } catch (err) {
-      console.error('[抽奖] 引用回复失败，降级直接发送:', err.message);
-      await bot.sendTextToChat(message.chat_id, hit.text);
-    }
-    console.log('[抽奖] 已回复:', hit.keywords.join('/'), '(chat_id:', message.chat_id, ')');
-    return { matched: true, keywords: hit.keywords, replied: true };
-  } catch (err) {
-    console.error('[抽奖] 回复失败:', err.message);
-    return { matched: true, keywords: hit.keywords, replied: false, error: err.message };
-  }
+  if (!enabled || replies.length === 0) return '';
+  return replies.map((r) => {
+    const names = `/${r.keywords[0]}${r.keywords.length > 1 ? '（别名 ' + r.keywords.slice(1).map(kw => '/' + kw).join('、') + '）' : ''}`;
+    return `  ${names}  抽一次奖`;
+  }).join('\n');
 }
 
 // ===== 定制窗口（顶层 AGENTS「机器人后端定制窗口」）：抽奖配置读写出口 =====
@@ -238,8 +176,8 @@ module.exports = {
   loadLotteryConfig,
   isChatAllowed,
   drawPrize,
-  buildDrawForText,
-  processMessageEvent,
+  drawForCommand,
+  listCommandHelp,
   getRules,
   upsertRule,
   deleteRule,

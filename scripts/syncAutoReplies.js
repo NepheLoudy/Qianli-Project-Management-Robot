@@ -57,16 +57,11 @@ function parseNum(v) {
 /**
  * 解析一个工作表的规则（解析口径与原实现一致）
  * @param {string} xlsxPath 表格文件
- * @param {{ sheetNames?: string[], logger?: Function, kwHeader?: string, ansHeader?: string, label?: string }|Function} [opts]
- *   传函数 = 兼容旧签名（logger）；kwHeader/ansHeader 自定义表头列名（默认 关键词/回答，供抽奖表复用）；
- *   label 用于告警前缀
+ * @param {{ sheetNames?: string[], logger?: Function }|Function} [opts] 传函数 = 兼容旧签名（logger）
  */
 function parseXlsx(xlsxPath, opts) {
   const options = typeof opts === 'function' ? { logger: opts } : (opts || {});
-  const label = options.label || '关键词回答表';
-  const kwHeader = options.kwHeader || '关键词';
-  const ansHeader = options.ansHeader || '回答';
-  const warn = (msg) => (options.logger || console.warn)(`⚠ [${label}] ${msg}`);
+  const warn = (msg) => (options.logger || console.warn)(`⚠ [关键词回答表] ${msg}`);
 
   const XLSX = require('xlsx');
   const wb = XLSX.readFile(xlsxPath);
@@ -81,19 +76,19 @@ function parseXlsx(xlsxPath, opts) {
   // 与 !ref 起点无关，混用会错位——B2 起的表会整体偏移一行）
   const matrix = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
-  // 表头行：找「某格恰为触发列名 且另一格恰为内容列名」的行（精确相等，避免标题含词误判）
+  // 表头行：找「某格恰为 关键词 且另一格恰为 回答」的行（精确相等，避免标题含词误判）
   let headerRowIdx = -1;
   for (let r = 0; r < Math.min(10, matrix.length); r++) {
     const cells = matrix[r].map(c => String(c).trim());
-    if (cells.includes(kwHeader) && cells.includes(ansHeader)) { headerRowIdx = r; break; }
+    if (cells.includes('关键词') && cells.includes('回答')) { headerRowIdx = r; break; }
   }
   if (headerRowIdx === -1) {
-    throw new Error(`工作表「${sheetName}」中未找到「${kwHeader}」「${ansHeader}」表头行`);
+    throw new Error(`工作表「${sheetName}」中未找到「关键词」「回答」表头行`);
   }
 
   const headerCells = matrix[headerRowIdx].map(c => String(c).trim());
-  const kwCol = headerCells.indexOf(kwHeader);
-  const ansCol = headerCells.indexOf(ansHeader);
+  const kwCol = headerCells.indexOf('关键词');
+  const ansCol = headerCells.indexOf('回答');
   if (kwCol === -1 || ansCol === -1) {
     throw new Error(`表头行异常: ${JSON.stringify(headerCells)}`);
   }

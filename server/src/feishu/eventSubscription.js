@@ -2,7 +2,6 @@ const lark = require('@larksuiteoapi/node-sdk');
 const config = require('../config');
 const keywordService = require('../services/keywordService');
 const autoReplyService = require('../services/autoReplyService');
-const lotteryService = require('../services/lotteryService');
 const chatService = require('../services/chatService');
 const ddlConfirmService = require('../services/ddlConfirmService');
 const meetingReminderService = require('../services/meetingReminderService');
@@ -52,18 +51,12 @@ async function handleMessageEvent(data) {
       }
     }
 
-    // 抽奖（全群关键词链路最优先）：未@机器人的群消息命中触发词按概率抽奖品回复；
-    // 命中即跳过关键词回答表（同一条消息不双回），发言记录照常
-    const lotteryResult = await lotteryService.processMessageEvent(data);
-    if (lotteryResult.matched) {
-      console.log('[事件订阅] 抽奖命中:', lotteryResult.keywords.join('/'), lotteryResult.replied ? '已回复' : '回复失败');
-    } else {
-      // 关键词自动回复：未@机器人的群消息命中本地回答表时自动回答
-      // （@机器人/私聊的命中在 chatService 内处理，不会走到这里；回复后不 return，发言记录照常）
-      const autoResult = await autoReplyService.processMessageEvent(data);
-      if (autoResult.matched) {
-        console.log('[事件订阅] 关键词自动回复命中:', autoResult.keywords.join('/'), autoResult.replied ? '已回复' : '回复失败');
-      }
+    // 关键词自动回复：未@机器人的群消息命中本地回答表时自动回答
+    // （@机器人/私聊的命中在 chatService 内处理，不会走到这里；回复后不 return，发言记录照常。
+    //   抽奖已改为 /触发词 指令，在 chatService 指令分支处理，不进未@管道）
+    const autoResult = await autoReplyService.processMessageEvent(data);
+    if (autoResult.matched) {
+      console.log('[事件订阅] 关键词自动回复命中:', autoResult.keywords.join('/'), autoResult.replied ? '已回复' : '回复失败');
     }
 
     // 关键词监听：如果配置了 KEYWORD_CHAT_ID，则只处理指定群的消息

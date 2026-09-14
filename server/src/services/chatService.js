@@ -149,12 +149,12 @@ async function handleDutyBranch(message, { isGroup, text, senderId }) {
     if (!text) {
       return { handled: true, reply: '' };
     }
-    // 抽奖触发词最优先（值日管辖群与其它群口径一致），命中即不再查回答表/引导语
-    const lotteryHit = lotteryService.buildDrawForText(text);
-    if (lotteryHit) {
-      console.log('[对话服务] 值日群抽奖命中:', lotteryHit.keywords.join('/'));
+    // 抽奖动态指令（值日管辖群同样可用，先于基础指令关闭的引导语）
+    const lotteryDraw = lotteryService.drawForCommand(text, message.chat_id);
+    if (lotteryDraw) {
+      console.log('[对话服务] 值日群抽奖指令:', lotteryDraw.keywords.join('/'));
       usageReport.report(senderId, '抽奖');
-      return { handled: true, reply: lotteryHit.text };
+      return { handled: true, reply: lotteryDraw.text };
     }
     // 关键词回答与其它群完全一致（2026-09-13 口径：未@/@关键词回答全群统一，不再有放行开关）
     const autoHit = autoReplyService.buildMentionReplyForText(text);
@@ -223,17 +223,14 @@ async function handleApprovalCommand(command, args) {
 
 async function handleHelpCommand() {
   const botName = config.bot.name;
+  // 抽奖动态指令段（触发词在 抽奖配置表.xlsx 定义；奖池为空/停用时整段省略）
+  const lotteryHelp = lotteryService.listCommandHelp();
   return `🍿 ${botName} - 指令帮助
 
-基础指令：
+群聊指令（@我 使用）：
   /help      显示此帮助信息
-  /status    查看服务运行状态
-  /test-ddl  测试DDL播报（与正式播报同内容，可作部分失败后的补发）
-  /keywords  查看关键词监听插件配置（发言记录）
-  /autoreply 查看关键词自动回答表（独立功能）
-  /lottery   查看抽奖奖池与概率（独立功能）
-  /history   查看最近播报历史
-
+  /lottery   查看抽奖奖池与概率
+${lotteryHelp ? lotteryHelp + '\n' : ''}
 财务审批指令（审批群内自动切换为 /approval-*，转发 approval-bot）：
   /approval-help /approval-list /approval-pending /approval-status /approval-urge
 
@@ -252,11 +249,8 @@ async function handleHelpCommand() {
 
 使用方式：
   • 群聊中请先 @${botName} 再发送指令
-  • 示例：@${botName} /help
-  • 示例：@${botName} /print-status
-  • 群内消息命中「关键词回答」表会自动回复（无需@，/autoreply 查看）
-  • 群里 @我 时优先命中「@触发回答」表，未命中回落「关键词回答」表（/autoreply 查看）
-  • 群消息含抽奖触发词即抽一次（无需@，优先级最高，/lottery 查看）`;
+  • 示例：@${botName} /lottery
+  • 群内消息命中「关键词回答」表会自动回复（无需@）`;
 }
 
 async function handleStatusCommand() {
@@ -405,7 +399,7 @@ async function handleAutoReplyCommand() {
   lines.push('');
   lines.push('@我时的命中顺序：先查②，未命中再查①；两表都没命中才回默认欢迎语');
   lines.push('私聊不返回回答内容，命中也只提示到群里使用');
-  lines.push('另有独立「抽奖」触发词，命中优先级最高（/lottery 查看）');
+  lines.push('抽奖已独立为指令（/触发词，/lottery 查看奖池）');
   lines.push('提示：修改 关键词回答表.xlsx 的对应工作表后 npm run push 同步部署（无需重启服务）');
 
   return lines.join('\n');
@@ -599,35 +593,35 @@ async function processChatMessage(event) {
           console.error('[对话服务] 指令执行失败:', err);
           replyText = `❌ 指令执行失败：${err.message}`;
         }
-      } else if (cmd.command.startsWith('/print-')) {
-        replyText = await handlePrintCommand(cmd.command, cmd.args);
       } else {
-        replyText = `❌ 未知指令：${cmd.command}\n发送 /help 查看可用指令`;
+        // 抽奖动态指令：/触发词 即抽一次（触发词/奖池在 抽奖配置表.xlsx 定义，见 /lottery）
+        const lotteryDraw = lotteryService.drawForCommand(cmd.command, message.chat_id);
+        if (lotteryDraw) {
+          console.log('[对话服务] 抽奖指令命中:', lotteryDraw.keywords.join('/'));
+          usageReport.report(senderId, '抽奖');
+          replyText = lotteryDraw.text;
+        } else if (cmd.command.startsWith('/print-')) {
+          replyText = await handlePrintCommand(cmd.command, cmd.args);
+        } else {
+          replyText = `❌ 未知指令：${cmd.command}\n发送 /help 查看可用指令`;
+        }
       }
     }
   } else {
-    // 抽奖触发词最优先（群内 @机器人 同样命中），命中即不再查两张回答表
     // 关键词自动回复（优先于默认欢迎语）：
     //   群内 @机器人 → 先查「@触发回答」表，未命中回落「关键词回答」表
     //   私聊 → 不返回回答内容，命中任一表只提示该功能面向群聊（指令白名单不受影响）
-    const lotteryHit = isGroup ? lotteryService.buildDrawForText(text) : null;
+    //   抽奖是指令（/触发词，见指令分支），不在本分支参与匹配
+    const autoHit = isGroup ? autoReplyService.buildMentionReplyForText(text) : null;
 
-    if (lotteryHit) {
-      console.log('[对话服务] 抽奖命中:', lotteryHit.keywords.join('/'));
-      usageReport.report(senderId, '抽奖');
-      replyText = lotteryHit.text;
+    if (autoHit) {
+      console.log('[对话服务] 关键词自动回复命中:', autoHit.keywords.join('/'), `(表: ${autoHit.source})`);
+      replyText = autoHit.text;
+    } else if (!isGroup && autoReplyService.hasKeywordHitForText(text)) {
+      console.log('[对话服务] 私聊命中关键词，提示仅面向群聊');
+      replyText = '⚠️ 关键词自动回复仅面向群聊开放，请在群里 @我 使用。';
     } else {
-      const autoHit = isGroup ? autoReplyService.buildMentionReplyForText(text) : null;
-
-      if (autoHit) {
-        console.log('[对话服务] 关键词自动回复命中:', autoHit.keywords.join('/'), `(表: ${autoHit.source})`);
-        replyText = autoHit.text;
-      } else if (!isGroup && autoReplyService.hasKeywordHitForText(text)) {
-        console.log('[对话服务] 私聊命中关键词，提示仅面向群聊');
-        replyText = '⚠️ 关键词自动回复仅面向群聊开放，请在群里 @我 使用。';
-      } else {
-        replyText = await handleNormalChat(senderName, message.chat_id);
-      }
+      replyText = await handleNormalChat(senderName, message.chat_id);
     }
   }
 
