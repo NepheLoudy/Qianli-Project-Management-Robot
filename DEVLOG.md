@@ -548,3 +548,11 @@
 - `抽奖配置表.xlsx` 按 sheet 组织：**工作表名即指令名**（sheet「抽奖」→ /抽奖；复制表改名即新抽奖，如 /转发抽奖）；表内仍是「奖品|概率」两列、一行=一个奖品、行数不限。syncLottery 遍历全簿——带「奖品」表头的表=奖池，无表头的表（使用说明/草稿）自动忽略并提示；空表（无有效奖品行）指令暂不生效并提示。LOTTERY_COMMAND 废弃（.env.example 同步清理），表格即指令全集；定制窗口仍可表格之外另加奖池。
 - 服务层无改动（drawForCommand 本就按池 keywords 精确匹配，多池天然支持）；stub 测试全过。
 - 文档：README §10/LOGIC-MAP/registry/顶层 AGENTS/用户指南 HTML+MD 同批改口径。
+
+### v91 · 2026-09-15 · 随本提交落地 · fix
+
+**全项目深度审查修复批：DDL 确认 usageReport 漏 require**
+
+- ddlConfirmService.js 调用 `usageReport.report(senderId, 'DDL确认')` 但从未引入该模块——每条 DDL 确认回复在状态已更新、回复已发出之后抛 ReferenceError：功能统计从未到达网关，且群聊路径异常会中断 eventSubscription 的 try 块，吞掉同消息的关键词监听/会议提醒环节。补一行 require（与 chatService 同款）。
+- AGENTS.md 指令交互契约文档修正：duty 载荷实为 `{command, openId, chatType, chatId?, imageKey?, messageId?, args?}`（图片载荷独立形态），原 `{command, args}` 描述以偏概全。
+- 部署前 stub 测试（stub-test-duty-branch）通过。

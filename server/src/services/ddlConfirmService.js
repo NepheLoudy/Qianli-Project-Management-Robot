@@ -2,6 +2,7 @@ const bot = require('../feishu/bot');
 const projectService = require('./projectService');
 const keywordService = require('./keywordService');
 const config = require('../config');
+const usageReport = require('./usageReport');
 
 // key: owner open_id, value: 数组 [{ projectId, projectName, ownerName, sentAt, chatId }]
 const pendingConfirmations = new Map();
