@@ -48,8 +48,10 @@ const commitMessage = process.argv[2] || 'update: 代码更新';
 const TAR_NAME = 'knowledge-tracker-deploy.tar.gz';
 // 打包时用相对文件名 + cwd 指向临时目录，避免 Windows GNU tar 把 "C:" 当远程主机
 const TAR_LOCAL = path.join(os.tmpdir(), TAR_NAME);
-const TAR_REMOTE = '/tmp/' + TAR_NAME;
-const REMOTE_DIR = '/opt/knowledge-tracker';
+const TAR_REMOTE = '/c/qianli/' + TAR_NAME;
+const TAR_REMOTE_WIN = 'C:/qianli/' + TAR_NAME;
+const REMOTE_DIR = '/c/qianli/opt/knowledge-tracker';
+const REMOTE_DIR_WIN = 'C:/qianli/opt/knowledge-tracker';
 const GIT_REMOTE = 'https://github.com/NepheLoudy/Qianli-Project-Management-Robot.git';
 const PM2_NAME = 'knowledge-tracker';
 
@@ -80,6 +82,21 @@ try {
 } catch (err) {
   // 同步失败不阻断部署，沿用现有 JSON
   console.warn('⚠ 关键词回答表同步失败，沿用现有 JSON:', err.message);
+}
+
+// ============ [0/4] 抽奖配置表.xlsx → lottery.json 同步（同口径：失败不阻断部署） ============
+try {
+  const { syncLottery } = require('./scripts/syncLottery');
+  const r = syncLottery();
+  if (r.reason) {
+    console.log(`ⓘ ${r.label}：${r.reason}`);
+  } else if (r.changed) {
+    console.log(`✓ ${r.label} → ${path.basename(r.jsonPath)} 已同步（${r.count} 条触发规则）`);
+  } else {
+    console.log(`✓ ${r.label} 无变化（当前 ${r.count} 条触发规则）`);
+  }
+} catch (err) {
+  console.warn('⚠ 抽奖配置表同步失败，沿用现有 JSON:', err.message);
 }
 
 // ============ [1/4] 代码提交推送到 GitHub ============
@@ -181,6 +198,7 @@ async function deployCode() {
       '--exclude=.env',
       '--exclude=server/src/config/autoReplies.local.json',
       '--exclude=server/src/config/autoRepliesMention.local.json',
+      '--exclude=server/src/config/lottery.local.json',
       '--exclude=logs',
       '--exclude=*.log',
       '--exclude=' + TAR_NAME,
@@ -200,7 +218,7 @@ async function deployCode() {
         process.exit(1);
       }
       console.log('上传代码包到 NAS...');
-      sftp.fastPut(TAR_LOCAL, TAR_REMOTE, (err2) => {
+      sftp.fastPut(TAR_LOCAL, TAR_REMOTE_WIN, (err2) => {
         if (err2) {
           console.error('代码上传失败:', err2.message);
           conn.end();
@@ -231,7 +249,7 @@ function uploadEnv() {
       conn.end();
       process.exit(1);
     }
-    sftp.fastPut(path.join(__dirname, 'server', '.env'), REMOTE_DIR + '/server/.env', (err2) => {
+    sftp.fastPut(path.join(__dirname, 'server', '.env'), REMOTE_DIR_WIN + '/server/.env', (err2) => {
       if (err2) {
         console.error('.env 上传失败:', err2.message);
         conn.end();
@@ -246,7 +264,8 @@ function uploadEnv() {
 // 关键词回答私有覆盖（含真实成员姓名，不进 git；git 路径部署仓库里没有，必须显式 SFTP）。
 // 【运行时数据保护】权威编辑路径在 NAS 侧（运维台定制窗口直写 .local.json），本地是种子：
 // 上传前先备份 NAS 现网版本；本地条目数少于现网时跳过上传（PUSH_FORCE_PRIVATE=1 强制覆盖）。
-const PRIVATE_DATA_DIR = '/home/qianli/knowledge-tracker-data';
+const PRIVATE_DATA_DIR = '/c/home/qianli/knowledge-tracker-data';
+const PRIVATE_DATA_DIR_WIN = 'C:/home/qianli/knowledge-tracker-data';
 
 function countEntries(content) {
   if (!content || !content.trim()) return 0;
@@ -261,10 +280,23 @@ function countEntries(content) {
 }
 
 function uploadPrivateConfigs(sftp) {
-  const relPath = 'server/src/config/autoReplies.local.json';
+  // 私有覆盖清单：关键词回答表 + 抽奖配置（窗口热改写出的 .local.json，权威在部署目标侧）
+  const files = [
+    'server/src/config/autoReplies.local.json',
+    'server/src/config/lottery.local.json',
+  ];
+  const next = (i) => {
+    if (i >= files.length) return restart();
+    uploadPrivateFile(sftp, files[i], () => next(i + 1));
+  };
+  next(0);
+}
+
+function uploadPrivateFile(sftp, relPath, done) {
+  const label = path.basename(relPath);
   const localPath = path.join(__dirname, relPath);
-  if (!require('fs').existsSync(localPath)) return restart();
-  const remotePath = REMOTE_DIR + '/' + relPath;
+  if (!require('fs').existsSync(localPath)) return done();
+  const remotePath = REMOTE_DIR_WIN + '/' + relPath;
   sftp.readFile(remotePath, 'utf8', (err, remoteContent) => {
     const fs = require('fs');
     const localContent = fs.readFileSync(localPath, 'utf8');
@@ -274,10 +306,10 @@ function uploadPrivateConfigs(sftp) {
     const backupThen = (next) => {
       if (err || !remoteContent.trim() || remoteContent === localContent) return next();
       const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      const backupPath = PRIVATE_DATA_DIR + '/backup/' + relPath.replace(/\//g, '_') + '.' + ts + '.bak';
+      const backupPath = PRIVATE_DATA_DIR_WIN + '/backup/' + relPath.replace(/\//g, '_') + '.' + ts + '.bak';
       return exec('mkdir -p ' + PRIVATE_DATA_DIR + '/backup', () => {
         sftp.writeFile(backupPath, remoteContent, (err3) => {
-          if (err3) console.warn(`⚠ autoReplies.local.json 现网备份失败（继续上传）:`, err3.message);
+          if (err3) console.warn(`⚠ ${label} 现网备份失败（继续上传）:`, err3.message);
           else console.log(`✓ 现网版本已备份: ${backupPath}`);
           next();
         });
@@ -285,20 +317,20 @@ function uploadPrivateConfigs(sftp) {
     };
 
     if (remoteCount > localCount && process.env.PUSH_FORCE_PRIVATE !== '1') {
-      console.warn(`⚠ [私有配置保护] 跳过 autoReplies.local.json 上传：本地 ${localCount} 条 < NAS 现网 ${remoteCount} 条（本地种子过期，权威在 NAS 侧）。`);
+      console.warn(`⚠ [私有配置保护] 跳过 ${label} 上传：本地 ${localCount} 条 < NAS 现网 ${remoteCount} 条（本地种子过期，权威在 NAS 侧）。`);
       console.warn('  确认要用本地覆盖请设 PUSH_FORCE_PRIVATE=1 重跑；NAS 现网内容已回填本地以防丢失。');
       fs.writeFileSync(localPath, remoteContent);
-      return restart();
+      return done();
     }
     backupThen(() => {
       sftp.fastPut(localPath, remotePath, (err2) => {
         if (err2) {
-          console.error('autoReplies.local.json 上传失败:', err2.message);
+          console.error(`${label} 上传失败:`, err2.message);
           conn.end();
           process.exit(1);
         }
-        console.log('✓ autoReplies.local.json 已上传到 NAS（私有回答表，仅存于 NAS）');
-        restart();
+        console.log(`✓ ${label} 已上传到 NAS（私有配置，仅存于 NAS）`);
+        done();
       });
     });
   });

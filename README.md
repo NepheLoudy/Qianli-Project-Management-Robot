@@ -94,6 +94,17 @@
 - 属对话回路（用户消息触发的即时应答），不受晚间静默窗口限制
 - `/status` 显示启用状态与两张表的条数
 
+### 10. 抽奖（全群关键词触发）
+- **填写入口：项目根目录 `抽奖配置表.xlsx`**（「抽奖配置」工作表；详细规则见表内「使用说明」工作表）
+  - 「触发词」列：同义词逗号/顿号/分号分隔放同一格，`#` 开头行=注释；消息文本**包含**触发词即命中（不分大小写）
+  - 「奖品」列：`/` 分隔多个候选奖品，触发时按概率加权随机抽一条，**奖品文字原文回复**（祝贺语/表情直接写进奖品文字）
+  - 「概率1/2/3…」列：与「关键词回答」表完全同口径（0-100 整数；留空候选均分剩余概率；全留空=等概率；总和不足 100 自动归一化、超 100 按比例压缩；0=永不抽中）
+- 走「关键词回答」同一条全群链路且**命中优先级最高**：抽奖触发词 > 「@触发回答」表 > 「关键词回答」表；一条消息命中多条抽奖规则时逐条各抽一条合并回复；抽奖命中后同条消息不再回回答表（互斥，不双回）
+- 生效范围：机器人所在的**全部群**（未@消息直接触发；群里 @机器人 时同样命中）；**私聊不触发**；`LOTTERY_CHAT_IDS` 可收窄（逗号分隔 chat_id，留空或 `*` = 所有群）
+- `npm run push` 开头自动同步（`scripts/syncLottery.js`，也可 `npm run sync:lottery` 只转存不部署）→ `server/src/config/lottery.json`（生成物，勿手改）；运行时每消息重读，**部署后改动即时生效，无需重启**
+- 指令/接口：`/lottery` 查看奖池与概率；定制窗口 `GET /api/lottery/rules` 读当前生效规则（`.local.json` 优先）；`POST /api/lottery/rules`（`{keywords:[], answersText:"每行一条 奖品|概率"}`）新增/更新、`POST /api/lottery/rules/delete`（`{keywords:[]}`）删除、`POST /api/lottery/enabled`（`{enabled}`）启停（写端点均需 `X-API-Token`）。**改动写 `.local.json` 即时生效**；`npm run push` 会用本地版本覆盖该文件（备份+条数守卫同回答表），持久批量编辑仍以本地 `抽奖配置表.xlsx` 为准
+- 其它：命中向网关上报统计（feature=`抽奖`，队员活跃归因）；引用回复原消息，失败降级直接发送；其他应用/机器人消息不触发；属对话回路，不受晚间静默窗口限制
+
 ## 项目结构
 
 ```
@@ -124,6 +135,7 @@ project-management-robot/
 │   │   │   ├── logService.js        # 维护日志服务
 │   │   │   ├── keywordService.js    # 关键词监听服务
 │   │   │   ├── autoReplyService.js  # 关键词自动回复服务（autoReplies.json + autoRepliesMention.json）
+│   │   │   ├── lotteryService.js    # 抽奖服务（lottery.json/.local.json，全群关键词链路最优先）
 │   │   │   ├── chatService.js       # 对话 / 指令服务
 │   │   │   ├── ddlConfirmService.js # 逾期确认服务
 │   │   │   ├── ticketCloseService.js # 工单分栏取数（主链路 API + 降级直读）
@@ -137,8 +149,10 @@ project-management-robot/
 │   ├── package.json
 │   └── .env.example
 ├── 关键词回答表.xlsx             # 关键词自动回答填写入口（「关键词回答」+「@触发回答」两个工作表，push 时各转一个 JSON）
+├── 抽奖配置表.xlsx               # 抽奖填写入口（「抽奖配置」工作表：触发词/奖品/概率，push 时转 lottery.json）
 ├── scripts/
-│   └── syncAutoReplies.js        # 关键词回答表.xlsx → autoReplies(.Mention).json 转换脚本
+│   ├── syncAutoReplies.js        # 关键词回答表.xlsx → autoReplies(.Mention).json 转换脚本
+│   └── syncLottery.js            # 抽奖配置表.xlsx → lottery.json 转换脚本（复用 syncAutoReplies 解析）
 ├── push.js                       # 一键部署脚本（Git + NAS）
 ├── auto-deploy.js                # GitHub Actions 时代旧部署脚本（已不用，仅存档）
 └── README.md
@@ -385,6 +399,10 @@ node push.js "提交说明"
 | `/api/keywords/records` | GET | 获取记录列表（支持层级） |
 | `/api/autoreplies/config` | GET | 查看关键词自动回答表（「关键词回答」表，独立功能） |
 | `/api/autoreplies/mention-config` | GET | 查看 @触发回答表（仅群里 @机器人 命中，优先级高于上表） |
+| `/api/lottery/rules` | GET | 查看抽奖配置（触发词/奖品/概率，`.local.json` 优先） |
+| `/api/lottery/rules` | POST | 新增/更新奖池（需 `X-API-Token`；`{keywords:[], answersText:"奖品\|概率 每行一条"}`） |
+| `/api/lottery/rules/delete` | POST | 删除奖池（需 `X-API-Token`；`{keywords:[]}`） |
+| `/api/lottery/enabled` | POST | 启停抽奖（需 `X-API-Token`；`{enabled}`） |
 
 ### 维护日志
 | 接口 | 方法 | 说明 |
@@ -404,6 +422,12 @@ node push.js "提交说明"
 - 数据存储：飞书多维表格（Bitable）
 - 定时任务：node-cron
 - 飞书 SDK：@larksuiteoapi/node-sdk
+
+### 测试
+```bash
+node server/scripts/stub-test-duty-branch.js   # 值日分支 + 关键词回答 + 抽奖链路 stub 测试（不触飞书）
+```
+`npm run push` 部署前自动跑（测试不过不部署，`SKIP_TESTS=1` 可跳过）；新增行为须带新断言。
 
 ### 注意事项
 1. 确保飞书应用已开通相应权限

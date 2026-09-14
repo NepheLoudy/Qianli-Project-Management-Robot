@@ -7,6 +7,7 @@ const { startCronJobs, runDDLBroadcast, getBroadcastHistory, getCronStatus } = r
 const logService = require('./services/logService');
 const keywordService = require('./services/keywordService');
 const autoReplyService = require('./services/autoReplyService');
+const lotteryService = require('./services/lotteryService');
 const ddlConfirmService = require('./services/ddlConfirmService');
 const { requireApiToken } = require('./auth');
 const { startEventSubscription, handleMessageEvent } = require('./feishu/eventSubscription');
@@ -160,6 +161,7 @@ app.get('/api/hub/policy', (req, res) => {
       policySource: `${config.duty.serviceUrl}/api/duty/policy`,
     },
     autoReply: { chatIdsRaw: config.autoReply.chatIdsRaw || '*', tables: ['autoReplies.json', 'autoRepliesMention.json'] },
+    lottery: { enabled: lotteryService.loadLotteryConfig().enabled, chatIdsRaw: config.lottery.chatIdsRaw || '*', file: 'lottery.json / lottery.local.json' },
     keywordListening: { chatId: config.keyword.chatId || '(全部群)' },
     meetingChatIds: config.meeting.chatIds,
     p2pCommandAllow: { openIdCount: config.p2pCommandAllow.openIds.length, chatIdCount: config.p2pCommandAllow.chatIds.length },
@@ -229,6 +231,38 @@ app.post('/api/autoreplies/enabled', requireApiToken, (req, res) => {
   try {
     const { table, enabled } = req.body || {};
     res.json({ ok: true, result: autoReplyService.setTableEnabled(normTable(table), enabled) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// 定制窗口：抽奖配置 CRUD（触发词/奖品/概率；走「关键词回答」同一条全群链路且优先级最高。
+// 运行时每消息重读，改动即时生效；npm run push 会以本地版本覆盖，持久批量编辑仍以本地 抽奖配置表.xlsx 为准）
+app.get('/api/lottery/rules', (req, res) => {
+  res.json(lotteryService.getRules());
+});
+
+app.post('/api/lottery/rules', requireApiToken, (req, res) => {
+  try {
+    res.json({ ok: true, result: lotteryService.upsertRule(req.body || {}) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/lottery/rules/delete', requireApiToken, (req, res) => {
+  try {
+    const { keywords } = req.body || {};
+    res.json({ ok: true, result: lotteryService.deleteRule(keywords) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/lottery/enabled', requireApiToken, (req, res) => {
+  try {
+    const { enabled } = req.body || {};
+    res.json({ ok: true, result: lotteryService.setEnabled(enabled) });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

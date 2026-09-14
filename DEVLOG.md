@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v82**（2026-09-13，随本提交落地）。
+当前最新：**v86**（2026-09-14，随本提交落地）。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -483,13 +483,13 @@
 - 测试：stub-test-duty-branch 重写 ⑩ 场景（管辖群 @/未@ 关键词照常回答）、⑭ 改为「含值日助手的规则不再被拒」（upsert 后 deleteRule 清理，不污染真实回答表）；duty stub-test-policy 同步去 flag 断言；两套全过。
 - README（回答表校验说明）、LOGIC-MAP §2.4、registry hub notes 同步。
 
-### v83 · 2026-09-13 · 随本提交落地 · docs
+### v83 · 2026-09-13 · a601bc2 · docs
 
 **文档重审订正：README DDL 确认时效口径（全量文档重审批，无代码改动）**
 
 - README「待确认记录 7 天自动过期清理」→「12 小时时效（可配）过期清除；超时次日 12:00 播报重新询问」——v81 改代码后 README 未跟，全量文档重审发现订正。stub-test-duty-branch 的 keywordPassthrough fixture 与注释同步标记为已移除机制。
 
-### v84 · 2026-09-13 · 随本提交落地 · fix
+### v84 · 2026-09-13 · 2a7c8d5 · fix
 
 **深度代码审查批：DDL 确认服务三处修复**
 
@@ -497,10 +497,21 @@
 2. 更新项目失败后 pending 回塞排在失败通知发送之后——通知再失败时记录丢失且异常逃逸——先回塞、通知单独 try/catch。
 3. p2p 待确认匹配不区分项目——同 owner 多项目时「是」恒完成第一条（写错项目）——同来源多条取最近发送的一条。
 
-### v85 · 2026-09-13 · 随本提交落地 · feat
+### v85 · 2026-09-13 · 69b82ce · feat
 
 **统计归因上报 + 管理端点鉴权 + 部署前测试闸门（体系推荐 R2/R4/统计覆盖规则）**
 
 - 关键词回答命中（@与未@）与 DDL 确认回复上报网关 /api/usage/report（usageReport.js，fire-and-forget）——队员活跃/功能统计自动覆盖这两类此前不可见的交互。
 - 新增 src/auth.js：/api/autoreplies/rules*、/api/autoreplies/enabled、/api/keywords/config、/api/projects、/api/bot/test-broadcast、/api/logs 写/配置端点需 X-API-Token（fail-closed）。运维台代理自动带头。
 - push.js 加部署前测试闸门：stub-test-duty-branch 全过才部署。
+
+### v86 · 2026-09-14 · 随本提交落地 · feat
+
+**抽奖系统上线：走关键词回答全群链路 + 本地抽奖配置表（触发词/奖品/概率）**
+
+- 新增 `抽奖配置表.xlsx`（「抽奖配置」+「使用说明」两张工作表）：一行=一个抽奖触发；**首发表格示例行为注释行（# 开头不同步），首次部署奖池为空、功能空转**——用户照示例格式填完触发词/奖品/概率再 push 即激活（避免示例奖品直接上线被抽走）；「触发词」列同义词分隔、任一命中即抽一次；「奖品」列 `/` 分隔候选，抽中的文字**原文回复**（表情/祝贺语写进奖品文字）；「概率1/2/3…」列与「关键词回答」表完全同口径（留空均分剩余、全空等概率、不足 100 归一化、超 100 按比例压缩、0=永不抽中）。`scripts/syncLottery.js`（`npm run sync:lottery`）转存 `server/src/config/lottery.json`，解析复用 syncAutoReplies 的 parseXlsx（表头列名泛化为可配参数）。
+- 新增 `lotteryService.js`：走「关键词回答」同一条全群链路（未@群消息触发、@机器人时同样命中、私聊不触发），命中优先级**最高**——抽奖 > @触发回答 > 关键词回答，抽奖命中后同条消息不再回回答表（互斥不双回）；按概率加权随机抽一条奖品引用回复（失败降级直接发送）；命中上报网关 `/api/usage/report`（feature=抽奖，队员活跃归因）；`LOTTERY_CHAT_IDS` 可收窄群范围（默认全群）。
+- 接线：eventSubscription 未@路径抽奖先行（命中跳过回答表，发言记录照常）；chatService @路径与值日管辖群分支同样抽奖最优先（先于回答表/引导语）；新增 `/lottery` 指令查看奖池与概率，/help、/autoreply 尾注、/status 口径同步。
+- 定制窗口：`GET /api/lottery/rules` 读 + `POST /api/lottery/rules|rules/delete|enabled`（X-API-Token）热改写 `.local.json` 即时生效；`/api/hub/policy` 补 lottery 概览；push.js 私有上传泛化为清单（autoReplies + lottery，同套现网备份+条数守卫），tar 排除 lottery.local.json，部署前自动同步抽奖表。
+- 测试：stub-test-duty-branch 新增抽奖场景（奖池抽取/权重 0 永不中、未@命中回复、管道级与回答表互斥、普通群/值日群 @ 路径、/lottery、启停窗口、CRUD；测试写的 lottery.local.json 结束按原状恢复，防残留随 push 覆盖现网种子），全量通过。
+- 文档：README 新增第 10 节 + 项目树 + API 表 + 「测试」节；registry.js hub 窗口/指令/监听同步；.env.example 增 LOTTERY_CHAT_IDS；顶层 AGENTS 窗口现状行与用户指南 HTML/MD 同批更新。

@@ -1,6 +1,7 @@
 const bot = require('../feishu/bot');
 const keywordService = require('./keywordService');
 const autoReplyService = require('./autoReplyService');
+const lotteryService = require('./lotteryService');
 const dutyPolicy = require('./dutyPolicyService');
 const usageReport = require('../services/usageReport');
 const { getBroadcastHistory } = require('../cron');
@@ -148,6 +149,13 @@ async function handleDutyBranch(message, { isGroup, text, senderId }) {
     if (!text) {
       return { handled: true, reply: '' };
     }
+    // 抽奖触发词最优先（值日管辖群与其它群口径一致），命中即不再查回答表/引导语
+    const lotteryHit = lotteryService.buildDrawForText(text);
+    if (lotteryHit) {
+      console.log('[对话服务] 值日群抽奖命中:', lotteryHit.keywords.join('/'));
+      usageReport.report(senderId, '抽奖');
+      return { handled: true, reply: lotteryHit.text };
+    }
     // 关键词回答与其它群完全一致（2026-09-13 口径：未@/@关键词回答全群统一，不再有放行开关）
     const autoHit = autoReplyService.buildMentionReplyForText(text);
     if (autoHit) {
@@ -223,6 +231,7 @@ async function handleHelpCommand() {
   /test-ddl  测试DDL播报（与正式播报同内容，可作部分失败后的补发）
   /keywords  查看关键词监听插件配置（发言记录）
   /autoreply 查看关键词自动回答表（独立功能）
+  /lottery   查看抽奖奖池与概率（独立功能）
   /history   查看最近播报历史
 
 财务审批指令（审批群内自动切换为 /approval-*，转发 approval-bot）：
@@ -246,7 +255,8 @@ async function handleHelpCommand() {
   • 示例：@${botName} /help
   • 示例：@${botName} /print-status
   • 群内消息命中「关键词回答」表会自动回复（无需@，/autoreply 查看）
-  • 群里 @我 时优先命中「@触发回答」表，未命中回落「关键词回答」表（/autoreply 查看）`;
+  • 群里 @我 时优先命中「@触发回答」表，未命中回落「关键词回答」表（/autoreply 查看）
+  • 群消息含抽奖触发词即抽一次（无需@，优先级最高，/lottery 查看）`;
 }
 
 async function handleStatusCommand() {
@@ -395,8 +405,33 @@ async function handleAutoReplyCommand() {
   lines.push('');
   lines.push('@我时的命中顺序：先查②，未命中再查①；两表都没命中才回默认欢迎语');
   lines.push('私聊不返回回答内容，命中也只提示到群里使用');
+  lines.push('另有独立「抽奖」触发词，命中优先级最高（/lottery 查看）');
   lines.push('提示：修改 关键词回答表.xlsx 的对应工作表后 npm run push 同步部署（无需重启服务）');
 
+  return lines.join('\n');
+}
+
+async function handleLotteryCommand() {
+  const lotteryConfig = lotteryService.loadLotteryConfig();
+
+  if (!lotteryConfig.enabled) {
+    return '🎲 抽奖：未启用（运维台定制中心可启停）';
+  }
+  if (lotteryConfig.replies.length === 0) {
+    return '🎲 抽奖：已启用，但奖池为空（请在 抽奖配置表.xlsx 填写触发词/奖品/概率后 npm run push）';
+  }
+
+  const lines = [`🎲 抽奖奖池（${lotteryConfig.replies.length} 个触发规则，消息含触发词即抽一次）`, ''];
+  lotteryConfig.replies.forEach((r, i) => {
+    const weights = autoReplyService.displayWeights(r.answers);
+    const pool = r.answers.map((a, j) => {
+      const pctStr = weights[j] !== undefined ? ` ${weights[j]}%` : '';
+      return `${a.text.trim().replace(/\s+/g, ' ').slice(0, 16)}${a.text.length > 16 ? '…' : ''}${pctStr}`;
+    }).join(' / ');
+    lines.push(`  ${i + 1}. [${r.keywords.join('/')}] → ${pool.slice(0, 80)}${pool.length > 80 ? '…' : ''}`);
+  });
+  lines.push('');
+  lines.push('群里发触发词即抽一次（无需@我）；改奖池编辑 抽奖配置表.xlsx 后 npm run push 同步');
   return lines.join('\n');
 }
 
@@ -428,6 +463,7 @@ const commandHandlers = {
   '/test-ddl': handleTestDDLCommand,
   '/keywords': handleKeywordsCommand,
   '/autoreply': handleAutoReplyCommand,
+  '/lottery': handleLotteryCommand,
   '/history': handleHistoryCommand,
 };
 
@@ -570,19 +606,28 @@ async function processChatMessage(event) {
       }
     }
   } else {
+    // 抽奖触发词最优先（群内 @机器人 同样命中），命中即不再查两张回答表
     // 关键词自动回复（优先于默认欢迎语）：
     //   群内 @机器人 → 先查「@触发回答」表，未命中回落「关键词回答」表
     //   私聊 → 不返回回答内容，命中任一表只提示该功能面向群聊（指令白名单不受影响）
-    const autoHit = isGroup ? autoReplyService.buildMentionReplyForText(text) : null;
+    const lotteryHit = isGroup ? lotteryService.buildDrawForText(text) : null;
 
-    if (autoHit) {
-      console.log('[对话服务] 关键词自动回复命中:', autoHit.keywords.join('/'), `(表: ${autoHit.source})`);
-      replyText = autoHit.text;
-    } else if (!isGroup && autoReplyService.hasKeywordHitForText(text)) {
-      console.log('[对话服务] 私聊命中关键词，提示仅面向群聊');
-      replyText = '⚠️ 关键词自动回复仅面向群聊开放，请在群里 @我 使用。';
+    if (lotteryHit) {
+      console.log('[对话服务] 抽奖命中:', lotteryHit.keywords.join('/'));
+      usageReport.report(senderId, '抽奖');
+      replyText = lotteryHit.text;
     } else {
-      replyText = await handleNormalChat(senderName, message.chat_id);
+      const autoHit = isGroup ? autoReplyService.buildMentionReplyForText(text) : null;
+
+      if (autoHit) {
+        console.log('[对话服务] 关键词自动回复命中:', autoHit.keywords.join('/'), `(表: ${autoHit.source})`);
+        replyText = autoHit.text;
+      } else if (!isGroup && autoReplyService.hasKeywordHitForText(text)) {
+        console.log('[对话服务] 私聊命中关键词，提示仅面向群聊');
+        replyText = '⚠️ 关键词自动回复仅面向群聊开放，请在群里 @我 使用。';
+      } else {
+        replyText = await handleNormalChat(senderName, message.chat_id);
+      }
     }
   }
 

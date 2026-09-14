@@ -4,7 +4,8 @@
   },
   "scripts": {
     "push": "node push.js",
-    "sync:auto-replies": "node scripts/syncAutoReplies.js"
+    "sync:auto-replies": "node scripts/syncAutoReplies.js",
+    "sync:lottery": "node scripts/syncLottery.js"
   },
   "devDependencies": {
     "xlsx": "^0.18.5"

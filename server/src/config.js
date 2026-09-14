@@ -72,6 +72,13 @@ module.exports = {
   autoReply: {
     chatIdsRaw: process.env.AUTO_REPLY_CHAT_IDS || '',
   },
+  // 抽奖（server/src/config/lottery.json，由项目根目录「抽奖配置表.xlsx」同步）：
+  // 群消息包含触发词即按概率抽一条奖品文字回复（无需@，全群链路最优先）。
+  // LOTTERY_CHAT_IDS：生效群范围（逗号分隔 chat_id）；留空或 '*' = 所有群。
+  // 抽奖只走群聊（@机器人/私聊不触发）；启停走窗口 POST /api/lottery/enabled，不靠删配置
+  lottery: {
+    chatIdsRaw: process.env.LOTTERY_CHAT_IDS || '',
+  },
   // 审批群（approval-bot 服务）：本群指令能力整体切换为财务相关，
   // /approval-* 指令转发给 approval-bot 处理
   approval: {
