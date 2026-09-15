@@ -654,4 +654,5 @@ module.exports = {
   isMentionedBot,
   parseCommand,
   isP2pCommandAllowed,
+  handleDutyForward, // ddlConfirmService R9 值日词表让位转发用（2026-09-15）
 };

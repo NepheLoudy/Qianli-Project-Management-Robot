@@ -3,6 +3,8 @@ const projectService = require('./projectService');
 const keywordService = require('./keywordService');
 const config = require('../config');
 const usageReport = require('./usageReport');
+// chatService 延迟到调用时 require：存在经第三方模块回到本模块的循环加载链，
+// 顶层 require 会捕获到未绑定完成的导出对象（handleDutyForward 缺失）
 
 // key: owner open_id, value: 数组 [{ projectId, projectName, ownerName, sentAt, chatId }]
 const pendingConfirmations = new Map();
@@ -177,6 +179,38 @@ async function handleReply(event) {
     return { handled: false, reason: '指令消息' };
   }
 
+  // 值日词表让位（2026-09-15 R9）：DDL 确认词表（是/是的/好/完成…）与值日打卡口语
+  // 变体完全重叠，p2p 有待确认项目时值日打卡会被这里抢成「项目 completed」。
+  // - 打卡/打卡了（值日主词，duty v16 口径）：恒让位 duty-bot，本模块不做任何提示；
+  // - 口语变体（duty-bot confirmVariant 同词表）：先转 duty-bot——仅当日有活跃值日
+  //   询问会话时被接管；无会话（reply 为空）回落 DDL 确认，行为与此前一致。
+  if (chatType === 'p2p') {
+    const raw = String(text || '').trim().toLowerCase();
+    const DUTY_PRIMARY = /^(打卡|打卡了)$/;
+    const DUTY_VARIANTS = /^(是的|好|好了|完成|完成了|做完了|搞定|搞定了)$/;
+    if (DUTY_PRIMARY.test(raw) || DUTY_VARIANTS.test(raw)) {
+      let dutyReply = '';
+      try {
+        const dutyResult = await require('./chatService').handleDutyForward({
+          command: raw, openId: senderId, chatType: 'p2p', messageId: message.message_id,
+        });
+        dutyReply = (dutyResult && dutyResult.reply) || '';
+      } catch (err) {
+        console.error('[DDL确认] 值日让位转发失败（按 duty 未接管处理）:', err.message);
+      }
+      if (dutyReply) {
+        try { await bot.sendTextToUser(senderId, dutyReply); } catch (err) { console.error('[DDL确认] 值日回复转发失败:', err.message); }
+        console.log('[DDL确认] 值日助手接管「' + raw + '」，DDL 确认让位');
+        return { handled: true, reason: '值日助手接管，DDL 确认让位' };
+      }
+      if (DUTY_PRIMARY.test(raw)) {
+        // 打卡主词 duty 未接管（非名册成员等）：不提示不确认，静默交回常规链路
+        return { handled: false, reason: '值日打卡主词静默让位（duty 未接管）' };
+      }
+      console.log('[DDL确认] 口语变体 duty 未接管（无活跃值日会话），回落 DDL 确认');
+    }
+  }
+
   const reply = parseConfirmationReply(text);
 
   if (!reply) {
@@ -297,4 +331,5 @@ module.exports = {
   handleReply,
   getPendingStats,
   parseConfirmationReply,
+  pendingConfirmations, // stub 测试注入待确认项用（勿在业务代码直写）
 };

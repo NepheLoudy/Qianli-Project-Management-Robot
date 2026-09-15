@@ -55,7 +55,7 @@ app.get('/api/projects/hierarchy', async (req, res) => {
   }
 });
 
-app.post('/api/projects', async (req, res) => {
+app.post('/api/projects', requireApiToken, async (req, res) => {
   try {
     const project = await projectService.createProject(req.body);
     res.json(project);
@@ -65,7 +65,7 @@ app.post('/api/projects', async (req, res) => {
   }
 });
 
-app.put('/api/projects/:id', async (req, res) => {
+app.put('/api/projects/:id', requireApiToken, async (req, res) => {
   try {
     const { id } = req.params;
     const project = await projectService.updateProject(id, req.body);
@@ -76,7 +76,7 @@ app.put('/api/projects/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/projects/:id', async (req, res) => {
+app.delete('/api/projects/:id', requireApiToken, async (req, res) => {
   try {
     const { id } = req.params;
     await projectService.deleteProject(id);
@@ -98,7 +98,7 @@ app.get('/api/projects/ddl-alerts', async (req, res) => {
   }
 });
 
-app.post('/api/bot/test-broadcast', async (req, res) => {
+app.post('/api/bot/test-broadcast', requireApiToken, async (req, res) => {
   try {
     const result = await runDDLBroadcast();
     if (result === null) {
@@ -125,7 +125,7 @@ app.get('/api/bot/cron-status', (req, res) => {
   res.json(getCronStatus());
 });
 
-app.post('/api/logs', async (req, res) => {
+app.post('/api/logs', requireApiToken, async (req, res) => {
   try {
     const { version, content } = req.body;
     if (!version || !content) {

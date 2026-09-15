@@ -68,7 +68,7 @@ require.cache[require.resolve('../src/feishu/bot')] = {
   id: 'bot-stub', filename: 'bot-stub', loaded: true, exports: {
     async replyTextMessage(messageId, text) { captured.botReplies.push({ messageId, text }); return {}; },
     async sendTextToChat() { return {}; },
-    async sendTextToUser() { return {}; },
+    async sendTextToUser(openId, text) { captured.botReplies.push({ openId, messageId: `dm_${openId}_${text.length}`, text }); return {}; },
   },
 };
 
@@ -192,6 +192,22 @@ function unAtEvent(text, msgId, chatId = 'oc_duty_group_test') {
   check('p2p「好了」→ 已转发 duty-bot（未接管空回执）', captured.dutyPayloads.some((p) => p.command === '好了' && p.messageId === 'p_hao'));
   const hao = captured.botReplies.find((r) => r.messageId === 'p_hao');
   check('p2p「好了」→ hub 落回常规流程（非占位回执）', !!hao && hao.text.length > 0 && !hao.text.includes('占位回执'), hao && hao.text);
+
+  // ④″ R9（2026-09-15）：DDL 确认在 p2p 对值日词表让位——有待确认项目时，
+  // 打卡主词/被 duty 接管的口语变体不再被 DDL 抢成「项目 completed」
+  const ddlConfirmService = require('../src/services/ddlConfirmService');
+  ddlConfirmService.pendingConfirmations.set('ou_member_1', [
+    { projectId: 'proj_test_1', projectName: '测试项目R9', ownerName: '队员甲', sentAt: Date.now(), chatId: null, sentMode: 'p2p' },
+  ]);
+  const r9a = await ddlConfirmService.handleP2PReply(p2pEvent('打卡', 'r9_punch'));
+  check('R9 有待确认时 p2p「打卡」→ duty 接管（handled）', r9a.handled === true && (r9a.reason || '').includes('值日'), JSON.stringify(r9a));
+  check('R9「打卡」转发 duty-bot 带原命令', captured.dutyPayloads.some((p) => p.command === '打卡' && p.messageId === 'r9_punch'));
+  check('R9「打卡」duty 回执转达用户', captured.botReplies.some((r) => r.openId === 'ou_member_1' && r.text.includes('占位回执:打卡')));
+  check('R9「打卡」未消耗 DDL 待确认项（项目状态不被改）', ddlConfirmService.pendingConfirmations.get('ou_member_1').length === 1);
+  const r9b = await ddlConfirmService.handleP2PReply(p2pEvent('是的', 'r9_yes'));
+  check('R9 口语变体 duty 接管时同样让位', r9b.handled === true && (r9b.reason || '').includes('值日'), JSON.stringify(r9b));
+  check('R9 DDL 待确认项全程未被消费', ddlConfirmService.pendingConfirmations.get('ou_member_1').length === 1);
+  ddlConfirmService.pendingConfirmations.delete('ou_member_1');
 
   // ⑤ p2p 图片：最小转发
   await chatService.processChatMessage(p2pEvent('', 'img1', {

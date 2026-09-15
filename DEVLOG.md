@@ -556,3 +556,11 @@
 - ddlConfirmService.js 调用 `usageReport.report(senderId, 'DDL确认')` 但从未引入该模块——每条 DDL 确认回复在状态已更新、回复已发出之后抛 ReferenceError：功能统计从未到达网关，且群聊路径异常会中断 eventSubscription 的 try 块，吞掉同消息的关键词监听/会议提醒环节。补一行 require（与 chatService 同款）。
 - AGENTS.md 指令交互契约文档修正：duty 载荷实为 `{command, openId, chatType, chatId?, imageKey?, messageId?, args?}`（图片载荷独立形态），原 `{command, args}` 描述以偏概全。
 - 部署前 stub 测试（stub-test-duty-branch）通过。
+
+### v92 · 2026-09-15 · 随本提交落地 · fix
+
+**R9 值日词表让位 + R10 写端点鉴权补齐（全项目审查推荐落地批）**
+
+- DDL 确认在 p2p 对值日词表让位（R9）：DDL 确认词表（是/是的/好/完成…）与值日打卡口语变体完全重叠，12h 窗口内有待确认项目时值日打卡被抢成「项目 completed」。现「打卡/打卡了」主词恒让位 duty-bot（本模块不再发「请回复是/否」误导提示）；口语变体先转 duty-bot（chatService.handleDutyForward，已导出），duty-bot 有当日活跃值日会话才接管，否则回落 DDL 确认、行为与此前一致。经第三方模块回到本模块的循环加载链用调用时惰性 require（顶层 require 会捕获未绑定完成的导出对象）。
+- 写端点补 X-API-Token（R10④）：POST/PUT/DELETE /api/projects、POST /api/logs、POST /api/bot/test-broadcast（未鉴权即可触发全群真实播报+逾期确认私聊，风险最高）。GET 保持开放（外部只读小组件不受影响）；运维台代理 POST 自动带头不受影响。
+- stub-test-duty-branch 新增 6 组 R9 断言（打卡接管/变体让位/待确认项不被消耗/回执转达），bot mock 增 sendTextToUser 捕获；全套通过。
