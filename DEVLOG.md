@@ -564,3 +564,10 @@
 - DDL 确认在 p2p 对值日词表让位（R9）：DDL 确认词表（是/是的/好/完成…）与值日打卡口语变体完全重叠，12h 窗口内有待确认项目时值日打卡被抢成「项目 completed」。现「打卡/打卡了」主词恒让位 duty-bot（本模块不再发「请回复是/否」误导提示）；口语变体先转 duty-bot（chatService.handleDutyForward，已导出），duty-bot 有当日活跃值日会话才接管，否则回落 DDL 确认、行为与此前一致。经第三方模块回到本模块的循环加载链用调用时惰性 require（顶层 require 会捕获未绑定完成的导出对象）。
 - 写端点补 X-API-Token（R10④）：POST/PUT/DELETE /api/projects、POST /api/logs、POST /api/bot/test-broadcast（未鉴权即可触发全群真实播报+逾期确认私聊，风险最高）。GET 保持开放（外部只读小组件不受影响）；运维台代理 POST 自动带头不受影响。
 - stub-test-duty-branch 新增 6 组 R9 断言（打卡接管/变体让位/待确认项不被消耗/回执转达），bot mock 增 sendTextToUser 捕获；全套通过。
+
+### v93 · 2026-09-16 · 6a3e228 · docs
+
+**push.js 部署目标文案清扫（docs，无行为变更）**
+
+- 「上传/连接到 NAS」等 15 处用户可见文案 → 「部署目标」；实际目标一直是小电脑 192.168.31.57（server/.env 的 NAS_HOST，历史命名语义=部署目标），路径 /c/qianli/opt/knowledge-tracker 无误。NAS_* 变量名保留（历史命名，顶层 AGENTS 已成文）。
+- 版本号说明：v92 之后并行会话的抽奖相关提交（ffcdb38/f001ba6）未记 DEVLOG，本条按提交哈希锚定，如有撞号以哈希为准。
