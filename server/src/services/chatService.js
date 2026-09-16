@@ -123,16 +123,18 @@ async function maybeForwardExpressObserve(event) {
     const msgType = message.message_type || message.msg_type;
     let text = '';
     let imageKey = '';
+    let imageKeys;
     if (msgType === 'image') {
       const keys = keywordService.extractImageKeys(message);
       imageKey = keys[0] || '';
     } else {
       text = extractTextWithoutMention(message);
+      if (keywordService.extractImageKeys(message).length) imageKeys = undefined; // 非图片消息不带图
     }
     if (!text && !imageKey) return;
     const senderId = (event.sender && event.sender.sender_id && (event.sender.sender_id.open_id || event.sender.sender_id.user_id)) || '';
     await handleDutyForward({
-      type: 'express_observe', text, imageKey, openId: senderId,
+      type: 'express_observe', text, imageKey, imageKeys, openId: senderId,
       chatType: 'group', chatId: message.chat_id, messageId: message.message_id,
     });
   } catch (err) {
@@ -160,7 +162,9 @@ async function handleDutyBranch(message, { isGroup, text, senderId }) {
       const imageKeys = keywordService.extractImageKeys(message);
       if (imageKeys.length > 0) {
         const { reply } = await handleDutyForward({
-          type: 'image', openId: senderId, imageKey: imageKeys[0], messageId: message.message_id,
+          type: 'image', openId: senderId, imageKey: imageKeys[0],
+          imageKeys, // 富文本一次多图全量透传（2026-09-17，duty 逐张收录）
+          messageId: message.message_id,
         });
         return { handled: true, reply };
       }
@@ -196,7 +200,7 @@ async function handleDutyBranch(message, { isGroup, text, senderId }) {
         const imageKeys = keywordService.extractImageKeys(message);
         if (imageKeys.length > 0) {
           const { reply } = await handleDutyForward({
-            type: 'image', openId: senderId, imageKey: imageKeys[0],
+            type: 'image', openId: senderId, imageKey: imageKeys[0], imageKeys,
             chatType: 'group', chatId: message.chat_id, messageId: message.message_id,
           });
           return { handled: true, reply };
