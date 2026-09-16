@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v94**（2026-09-17，随本提交落地）。
+当前最新：**v95**（2026-09-17，随本提交落地）。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -586,3 +586,12 @@
 - .env.example NAS 三键（host/port/user）迁小电脑实值（顶层 v64 清扫漏网，本批义务收口）；nas-e2e-test.js 补 GATEWAY_API_TOKEN（R10 fail-closed 后必 403 失效）。
 - 测试：stub-test-duty-branch 更新到新契约（@+图片转发断言、p2p 图片按 messageId 精确取），全部通过；全部改动文件 node --check 过。
 - 文档：LOGIC-MAP 修正（share_chat 排除、/lottery 补录、R9 值日让位补记、值日分支快递助手/④修复描述）；feishu-permissions.txt 过期导出警示注。
+
+### v95 · 2026-09-17 · 随本提交落地 · fix
+
+**DDL 卡工单分栏细则扩充 + TDZ 回归修复（v94 引入即修）**
+
+- 修复 v94 三桶解构默认的位置错误：`buckets` 声明在无人接单分栏之后，该分栏引用触发 TDZ ReferenceError，整张 DDL 卡渲染崩溃（node --check 查不出，无渲染层测试所致）——解构上移到分栏之前并注释警示。
+- 工单分栏行渲染细则（配合 ticket-bot v74 字段）：结单两栏 `👤负责人 「编号」**需求** - DDL 状态（📅 理想结单日期）`，无人接单栏 `🆘（组别）「编号」**需求** - 已发布时长`；编号缺省时不出「」占位。
+- 降级直读链路（ticketCloseService.getUnclosedBuckets）同批对齐标题口径与 code/groups 字段（两链路契约一致）。
+- 验证：buildDDLReportCard 三分栏冒烟渲染（编号/需求/日期/组别/无编号不占位）全过。

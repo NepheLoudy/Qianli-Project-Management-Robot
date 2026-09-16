@@ -245,6 +245,11 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
     });
   }
 
+  // ticket-bot 联动：未结单工单按理想结单时间分栏（只列处理人名字不 @，结单提醒由 ticket-bot 私聊完成）
+  // 三桶统一解构默认（2026-09-17）：API 形状漂移时不 TypeError 炸整轮播报
+  //（注意：解构必须在无人接单分栏之前——该分栏也读 buckets，此前曾因声明位置靠后触发 TDZ ReferenceError）
+  const buckets = { urgent: [], week: [], unclaimed: [], ...(ticketBuckets || {}) };
+
   // ticket-bot 联动：无人接单工单分栏（触发节点滞留超 6h 无人接单；只列标题不 @，
   // 群内问询与组长私聊升级由 ticket-bot 超时检查承担）
   const unclaimedCount = buckets.unclaimed.length;
@@ -259,14 +264,13 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
         ? `🔴 已发布 ${Math.floor(t.elapsedHours / 24)} 天无人接单`
         : `🟠 已发布 ${t.elapsedHours} 小时无人接单`;
       const groups = t.groups && t.groups.length ? `（${t.groups.join('、')}）` : '';
-      return `🆘 ${groups}**${t.title}** - ${when}`;
+      const code = t.code ? `「${t.code}」` : '';
+      return `🆘 ${groups}${code}**${t.title}** - ${when}`;
     });
     elements.push({ tag: 'markdown', content: lines.join('\n') });
   }
 
   // ticket-bot 联动：未结单工单按理想结单时间分栏（只列处理人名字不 @，结单提醒由 ticket-bot 私聊完成）
-  // 三桶统一解构默认（2026-09-17）：API 形状漂移时不 TypeError 炸整轮播报
-  const buckets = { urgent: [], week: [], unclaimed: [], ...(ticketBuckets || {}) };
   const ticketUrgentCount = buckets.urgent.length;
   if (ticketUrgentCount > 0) {
     elements.push({ tag: 'hr' });
@@ -276,7 +280,9 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
     });
     const lines = buckets.urgent.map(t => {
       const when = t.daysLeft < 0 ? `🔴 已超理想结单时间 ${Math.abs(t.daysLeft)} 天` : t.daysLeft === 0 ? '🟠 今天到达理想结单时间' : `🟠 ${t.daysLeft}天后到达理想结单时间`;
-      return `🎫 👤 ${t.handlerName} **${t.title}** - ${when}`;
+      const date = t.deadlineFormatted ? `（📅 ${t.deadlineFormatted}）` : '';
+      const code = t.code ? `「${t.code}」` : '';
+      return `🎫 👤 ${t.handlerName} ${code}**${t.title}** - ${when}${date}`;
     });
     elements.push({ tag: 'markdown', content: lines.join('\n') });
   }
@@ -289,7 +295,9 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
       content: `**🎫 工单7日内待结单（${ticketWeekCount}个）**`,
     });
     const lines = buckets.week.map(t => {
-      return `🎫 👤 ${t.handlerName} **${t.title}** - ${t.daysLeft}天后到达理想结单时间`;
+      const date = t.deadlineFormatted ? `（📅 ${t.deadlineFormatted}）` : '';
+      const code = t.code ? `「${t.code}」` : '';
+      return `🎫 👤 ${t.handlerName} ${code}**${t.title}** - ${t.daysLeft}天后到达理想结单时间${date}`;
     });
     elements.push({ tag: 'markdown', content: lines.join('\n') });
   }
