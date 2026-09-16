@@ -134,7 +134,7 @@ function buildTreePrefix(level, isLast, ancestors) {
 }
 
 function renderTreeNode(node, mentionField, categoryInfo, ancestors = [], isLast = true) {
-  const { level, name, category, status, isQualified, daysLeft, ddlCategory, priorityLabel, ddlFormatted, children, hasChildren } = node;
+  const { level, name, category, status, isQualified, daysLeft, ddlCategory, priorityLabel, ddlFormatted, children, hasChildren, zombieParent } = node;
 
   const prefix = buildTreePrefix(level, isLast, ancestors);
 
@@ -156,6 +156,10 @@ function renderTreeNode(node, mentionField, categoryInfo, ancestors = [], isLast
     // waiting: 还没有人做，标注待认领
     if (status === 'waiting') {
       statusText += ' · ⏳待认领';
+    }
+    // 僵尸父项目：子项目已全部收尾，父项目自己还有 DDL 没结（2026-09-17）
+    if (zombieParent) {
+      statusText += ' · 🧟 子项目均已收尾，父项目待结';
     }
     const checkbox = daysLeft < 0 ? '🔴' : daysLeft <= 2 ? '🟠' : '🟢';
     line = `${prefix}${checkbox} ${personDisplay} **${category}组 - ${name}** - ${statusText}\n${'   '.repeat(level)}  优先级: ${priorityLabel}，截止: ${ddlFormatted}`;

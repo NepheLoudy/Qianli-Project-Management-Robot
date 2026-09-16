@@ -315,6 +315,17 @@ async function getDDLForBroadcastWithHierarchy(filter = 'all', preloadedProjects
       }
 
       if (node.hasChildren && node.children.length === 0) {
+        // 僵尸父项目（2026-09-17 用户口径）：名下子项目已全部终态（completed/died），
+        // 父项目自己却未完成且 DDL 已进播报窗口——恢复为叶子行参与播报并打 🧟 标注，
+        // 避免未完成的父项目因「父项目只当容器」的规则静默变成僵尸
+        const allChildrenTerminal = item.children.length > 0
+          && item.children.every(c => c.status === 'completed' || c.status === 'died');
+        if (allChildrenTerminal && node.ddlCategory !== 'none') {
+          node.isQualified = true;
+          node.zombieParent = true;
+          node.hasChildren = false;
+          pruned.push(node);
+        }
         return;
       }
 
