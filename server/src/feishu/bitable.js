@@ -46,10 +46,13 @@ const bitableApi = {
     return allItems;
   },
 
-  async createRecord(tableId, fields) {
+  // appToken 可选参数（2026-09-17）：不传用 config.bitable.appToken。
+  // 动态广场等跨 base 写入此前传 config.plaza.appToken 无效（死配置，恰与项目表同 base 才没炸），
+  // 现显式透传——把广场表指到别的 base 时不再静默写错地方
+  async createRecord(tableId, fields, appToken) {
     const res = await requestAPI(
       'POST',
-      `/bitable/v1/apps/${this.appToken}/tables/${tableId}/records`,
+      `/bitable/v1/apps/${appToken || this.appToken}/tables/${tableId}/records`,
       {
         fields,
       }

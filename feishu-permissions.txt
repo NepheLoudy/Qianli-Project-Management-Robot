@@ -1,3 +1,4 @@
+⚠️ 过期导出，仅历史参考（2026-09-16 核实：远不止这 6 项，如 drive:file:upload 一直在）。真实权限以开放平台后台为准，存疑就做实弹验证，勿以本清单断言权限缺失。
 bitable:app
 im:message
 im:message:send_as_bot

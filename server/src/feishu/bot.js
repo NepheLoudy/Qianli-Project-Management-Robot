@@ -247,14 +247,14 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
 
   // ticket-bot 联动：无人接单工单分栏（触发节点滞留超 6h 无人接单；只列标题不 @，
   // 群内问询与组长私聊升级由 ticket-bot 超时检查承担）
-  const unclaimedCount = (ticketBuckets.unclaimed || []).length;
+  const unclaimedCount = buckets.unclaimed.length;
   if (unclaimedCount > 0) {
     elements.push({ tag: 'hr' });
     elements.push({
       tag: 'markdown',
       content: `**🆘 无人接单工单（超6小时无人响应，${unclaimedCount}个）**`,
     });
-    const lines = ticketBuckets.unclaimed.map(t => {
+    const lines = buckets.unclaimed.map(t => {
       const when = t.elapsedHours >= 24
         ? `🔴 已发布 ${Math.floor(t.elapsedHours / 24)} 天无人接单`
         : `🟠 已发布 ${t.elapsedHours} 小时无人接单`;
@@ -265,28 +265,30 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
   }
 
   // ticket-bot 联动：未结单工单按理想结单时间分栏（只列处理人名字不 @，结单提醒由 ticket-bot 私聊完成）
-  const ticketUrgentCount = ticketBuckets.urgent.length;
+  // 三桶统一解构默认（2026-09-17）：API 形状漂移时不 TypeError 炸整轮播报
+  const buckets = { urgent: [], week: [], unclaimed: [], ...(ticketBuckets || {}) };
+  const ticketUrgentCount = buckets.urgent.length;
   if (ticketUrgentCount > 0) {
     elements.push({ tag: 'hr' });
     elements.push({
       tag: 'markdown',
       content: `**🎫 工单结单加急（2日内，${ticketUrgentCount}个）**`,
     });
-    const lines = ticketBuckets.urgent.map(t => {
+    const lines = buckets.urgent.map(t => {
       const when = t.daysLeft < 0 ? `🔴 已超理想结单时间 ${Math.abs(t.daysLeft)} 天` : t.daysLeft === 0 ? '🟠 今天到达理想结单时间' : `🟠 ${t.daysLeft}天后到达理想结单时间`;
       return `🎫 👤 ${t.handlerName} **${t.title}** - ${when}`;
     });
     elements.push({ tag: 'markdown', content: lines.join('\n') });
   }
 
-  const ticketWeekCount = ticketBuckets.week.length;
+  const ticketWeekCount = buckets.week.length;
   if (ticketWeekCount > 0) {
     elements.push({ tag: 'hr' });
     elements.push({
       tag: 'markdown',
       content: `**🎫 工单7日内待结单（${ticketWeekCount}个）**`,
     });
-    const lines = ticketBuckets.week.map(t => {
+    const lines = buckets.week.map(t => {
       return `🎫 👤 ${t.handlerName} **${t.title}** - ${t.daysLeft}天后到达理想结单时间`;
     });
     elements.push({ tag: 'markdown', content: lines.join('\n') });

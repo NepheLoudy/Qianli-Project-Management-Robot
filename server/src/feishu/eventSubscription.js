@@ -42,6 +42,12 @@ async function handleMessageEvent(data) {
       return;
     }
 
+    // 快递登记窗口观察（2026-09-17）：值日管辖群未@消息 → duty-bot（fire-and-forget，
+    // 窗口未开时 duty-bot 静默忽略；@消息已在 processChatMessage 值日分支走指令转发）
+    if (chatType === 'group' && !chatService.isMentionedBot(data.message)) {
+      chatService.maybeForwardExpressObserve(data).catch(() => {});
+    }
+
     // 群聊中检查 DDL 逾期确认回复（降级到群聊后，用户在群里回复）
     if (chatType === 'group' && chatCtx) {
       const confirmResult = await ddlConfirmService.handleReply(data);

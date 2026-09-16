@@ -162,6 +162,12 @@ function rulesFilePath(table) {
   return resolveConfigPath(base);
 }
 
+// 权重解析：支持 0（=永不触发，与 lottery 配置同语义；2026-09-17 修复权重 0 被静默改成 1）
+function parseWeight(w) {
+  const n = Number.parseInt(w, 10);
+  return Number.isFinite(n) && n >= 0 ? n : 1;
+}
+
 function normalizeRuleInput(rule) {
   const keywords = (Array.isArray(rule?.keywords) ? rule.keywords : String(rule?.keywords || '').split(/[,，、]/))
     .map((k) => String(k).trim()).filter(Boolean);
@@ -169,14 +175,14 @@ function normalizeRuleInput(rule) {
   let answers;
   if (Array.isArray(rule?.answers) && rule.answers.length > 0) {
     answers = rule.answers
-      .map((a) => ({ text: String(a.text ?? '').trim(), weight: Number.parseInt(a.weight, 10) > 0 ? Number.parseInt(a.weight, 10) : 1 }))
+      .map((a) => ({ text: String(a.text ?? '').trim(), weight: parseWeight(a.weight) }))
       .filter((a) => a.text);
   } else if (typeof rule?.answersText === 'string' && rule.answersText.trim()) {
     // 窗口便捷格式：每行一条 `回答|权重`（权重可省，默认 1）
     answers = rule.answersText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
       .map((l) => {
         const [text, w] = l.split('|');
-        return { text: text.trim(), weight: Number.parseInt(w, 10) > 0 ? Number.parseInt(w, 10) : 1 };
+        return { text: text.trim(), weight: parseWeight(w) };
       });
   } else if (typeof rule?.answer === 'string' && rule.answer.trim()) {
     answers = [{ text: rule.answer.trim(), weight: 1 }];

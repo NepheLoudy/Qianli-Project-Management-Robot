@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v90**（2026-09-15，随本提交落地）。
+当前最新：**v94**（2026-09-17，随本提交落地）。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -571,3 +571,18 @@
 
 - 「上传/连接到 NAS」等 15 处用户可见文案 → 「部署目标」；实际目标一直是小电脑 192.168.31.57（server/.env 的 NAS_HOST，历史命名语义=部署目标），路径 /c/qianli/opt/knowledge-tracker 无误。NAS_* 变量名保留（历史命名，顶层 AGENTS 已成文）。
 - 版本号说明：v92 之后并行会话的抽奖相关提交（ffcdb38/f001ba6）未记 DEVLOG，本条按提交哈希锚定，如有撞号以哈希为准。
+
+### v94 · 2026-09-17 · 随本提交落地 · fix
+
+**全量 debug 批：值日分支④误拦修复 + 快递助手路由 + P0 私有文件防护 + 六处审查修复**
+
+- 值日分支④修复：非管辖群 @ 值日指令改吃策略 `groupCommands` 指令子集（旧逻辑吃整份 p2pCommands，把「是/好/完成」打卡口语词也拦成「请私信办理」，误伤项目群 @ 口语回复）；旧版 duty-bot 无该字段回落 p2pCommands 兼容。
+- 快递助手路由（duty v29 联动）：管辖群 @ 指令子集（快递助手/快递/查询当前快递，裸词与带 / 双形态）与取件词形（已取n/全部已取，策略 p2pCommandPatterns）转发 duty-bot；@+纯图片转图片载荷（快递窗口登记素材，duty-bot 无窗口静默）；非@消息经 `maybeForwardExpressObserve` 观察转发（eventSubscription 挂管道，fire-and-forget，sender_type=app 跳过防回环）；handleDutyForward 补 8s 超时（duty-bot 半死不再拖住 hub 消息管线）；dutyPolicyService 兜底策略同步补字段+词形判定。
+- P0 私有文件防护：.gitignore 改 `server/src/config/*.local.json` 通配（autoRepliesMention/lottery 此前裸奔，按文档回填后 push 会把真实姓名推上 git）；push.js 私有上传清单补 autoRepliesMention.local.json（备份+守卫同款）。
+- plaza appToken 死配置修活：bitable.createRecord 支持可选 appToken，plaza 显式传 config.plaza.appToken（此前广场表指到别的 base 会静默写错地方）。
+- auth.js 废除 ?token= 查询串（与 gateway R10② 同口径，token 不再进访问日志）。
+- @触发回答表权重 0 语义修复（parseWeight：0=永不触发，与 lottery 同语义，此前被静默改成 1）。
+- DDL 卡 ticketBuckets 三桶解构默认（API 形状漂移不再炸整轮播报）；broadcast-state 文件可经 BROADCAST_STATE_FILE 外迁项目外。
+- .env.example NAS 三键（host/port/user）迁小电脑实值（顶层 v64 清扫漏网，本批义务收口）；nas-e2e-test.js 补 GATEWAY_API_TOKEN（R10 fail-closed 后必 403 失效）。
+- 测试：stub-test-duty-branch 更新到新契约（@+图片转发断言、p2p 图片按 messageId 精确取），全部通过；全部改动文件 node --check 过。
+- 文档：LOGIC-MAP 修正（share_chat 排除、/lottery 补录、R9 值日让位补记、值日分支快递助手/④修复描述）；feishu-permissions.txt 过期导出警示注。

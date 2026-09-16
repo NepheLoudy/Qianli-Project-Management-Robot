@@ -94,6 +94,7 @@ async function handleDutyForward(payload) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(8000), // duty-bot 半死（建连不回包）时不能拖住 hub 消息管线
     });
     if (!res.ok) {
       throw new Error(`值日服务响应失败: ${res.status}`);
@@ -103,6 +104,39 @@ async function handleDutyForward(payload) {
   } catch (err) {
     console.error('[对话服务] 调用值日服务失败:', err.message);
     return { reply: '❌ 值日服务暂不可用，请稍后再试', handled: true };
+  }
+}
+
+/**
+ * 快递登记窗口观察转发（2026-09-17）：快递群（=值日管辖群）非@消息 → duty-bot，
+ * 窗口未开时 duty-bot 静默忽略，hub 侧不判断窗口状态也不回复（fire-and-forget）。
+ * 由 eventSubscription 对未@群消息调用；@消息走 handleDutyBranch 指令转发，两条路不同时走。
+ */
+async function maybeForwardExpressObserve(event) {
+  try {
+    const message = event.message;
+    if (!message || !message.chat_id) return;
+    if (event.sender && event.sender.sender_type === 'app') return; // 播报卡/机器人互答不观察（防回环）
+    const policy = await dutyPolicy.getDutyPolicy();
+    if (!dutyPolicy.isManagedGroup(policy, message.chat_id)) return;
+    if (policy.express && policy.express.enabled === false) return;
+    const msgType = message.message_type || message.msg_type;
+    let text = '';
+    let imageKey = '';
+    if (msgType === 'image') {
+      const keys = keywordService.extractImageKeys(message);
+      imageKey = keys[0] || '';
+    } else {
+      text = extractTextWithoutMention(message);
+    }
+    if (!text && !imageKey) return;
+    const senderId = (event.sender && event.sender.sender_id && (event.sender.sender_id.open_id || event.sender.sender_id.user_id)) || '';
+    await handleDutyForward({
+      type: 'express_observe', text, imageKey, openId: senderId,
+      chatType: 'group', chatId: message.chat_id, messageId: message.message_id,
+    });
+  } catch (err) {
+    console.warn('[对话服务] 快递窗口观察转发失败:', err.message);
   }
 }
 
@@ -134,7 +168,7 @@ async function handleDutyBranch(message, { isGroup, text, senderId }) {
     }
   }
 
-  // ② 值日管辖群：看板触发词 + 关键词回答放行（基础指令按策略关闭）
+  // ② 值日管辖群：看板触发词 + 群内指令子集/取件词形 + 关键词回答放行（基础指令按策略关闭）
   if (isGroup && dutyPolicy.isManagedGroup(policy, message.chat_id)) {
     const enforce = policy.hubEnforcement || {};
     const boardCommand = enforce.groupBoardCommand || '值日助手';
@@ -145,8 +179,29 @@ async function handleDutyBranch(message, { isGroup, text, senderId }) {
       });
       return { handled: true, reply };
     }
-    // @+纯图片（无文字）：无可执行的值日语义，静默吞掉，不回引导语噪音
+    // 群内指令子集（快递助手/快递/查询当前快递）+ 取件词形（已取n/全部已取）
+    // （2026-09-17 快递助手；清单来自策略 groupCommands/p2pCommandPatterns，duty-bot 下发）
+    if (text && dutyPolicy.isDutyGroupCommandText(policy, text)) {
+      const { reply } = await handleDutyForward({
+        command: text, openId: senderId, chatType: 'group', chatId: message.chat_id,
+        messageId: message.message_id,
+      });
+      return { handled: true, reply };
+    }
+    // @+纯图片（无文字）：快递窗口开着时是登记素材 → 转发（无窗口 duty-bot 静默，不回噪音）
     if (!text) {
+      const msgType = message.message_type || message.msg_type;
+      const expressOpen = !(policy.express && policy.express.enabled === false);
+      if (expressOpen && msgType === 'image') {
+        const imageKeys = keywordService.extractImageKeys(message);
+        if (imageKeys.length > 0) {
+          const { reply } = await handleDutyForward({
+            type: 'image', openId: senderId, imageKey: imageKeys[0],
+            chatType: 'group', chatId: message.chat_id, messageId: message.message_id,
+          });
+          return { handled: true, reply };
+        }
+      }
       return { handled: true, reply: '' };
     }
     // 抽奖动态指令（值日管辖群同样可用，先于基础指令关闭的引导语）
@@ -173,12 +228,14 @@ async function handleDutyBranch(message, { isGroup, text, senderId }) {
     return { handled: false, reply: '' };
   }
 
-  // ④ 非管辖群 @ 值日指令（精确词；前缀「绑定」不在此列，避免误拦常规用法）：
+  // ④ 非管辖群 @ 值日指令（只认指令子集 groupCommands——2026-09-17 修复：此前吃整份
+  // p2pCommands，把 是/好/完成 等打卡口语词也拦成「请私信办理」，误伤项目群 @ 口语回复；
+  // 旧版 duty-bot 无 groupCommands 字段时回落 p2pCommands 保持兼容）：
   // 提示办理路径，避免落进项目管理欢迎语/未知指令
-  if (isGroup && Array.isArray(policy.p2pCommands) && policy.p2pCommands.includes(text)) {
+  if (isGroup && dutyPolicy.isDutyGroupCommandText(policy, text)) {
     return {
       handled: true,
-      reply: '🧹 值日相关功能（看板/请假/打卡确认）请在值日专用群 @我，或私信机器人办理。',
+      reply: '🧹 值日相关功能（看板/请假/打卡/快递助手）请在值日专用群 @我，或私信机器人办理。',
     };
   }
 
@@ -655,4 +712,5 @@ module.exports = {
   parseCommand,
   isP2pCommandAllowed,
   handleDutyForward, // ddlConfirmService R9 值日词表让位转发用（2026-09-15）
+  maybeForwardExpressObserve, // 快递登记窗口观察（eventSubscription 非@群消息调用）
 };

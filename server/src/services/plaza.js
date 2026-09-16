@@ -16,13 +16,15 @@ function enabled() {
 async function append({ event, title, count, link } = {}) {
   if (!enabled() || !event || !title) return;
   try {
+    // 显式传广场 appToken（2026-09-17：bitable.createRecord 支持可选 appToken；
+    // 此前该配置是死配置，恰与项目表同 base 才没炸）
     await bitableApi.createRecord(config.plaza.tableId, {
       '标题': String(title).slice(0, 500),
       '来源机器人': SOURCE,
       '事件类型': event,
       ...(count != null ? { '数量': count } : {}),
       ...(link ? { '链接': { link } } : {}),
-    });
+    }, config.plaza.appToken);
   } catch (err) {
     console.warn('[动态广场] 写入失败（忽略）:', err.message);
   }

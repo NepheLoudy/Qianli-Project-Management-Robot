@@ -28,9 +28,14 @@ function buildFallbackPolicy() {
     p2pCommands: [
       '值日助手', '我要请假', '查询我的下一次值日', '是', '否', '打卡', '打卡了', '生成排班表',
       '是的', '好', '好了', '完成', '完成了', '做完了', '搞定', '搞定了',
+      '快递助手', '快递', '查询当前快递', '已取', '全部已取',
       '/值日助手', '/我要请假', '/查询我的下一次值日', '/是', '/否', '/打卡', '/打卡了', '/生成排班表',
+      '/快递助手', '/快递', '/查询当前快递',
     ],
     p2pCommandPrefixes: ['绑定', '/绑定'],
+    p2pCommandPatterns: ['^已取\\s*\\d*$', '^全部已取$'],
+    groupCommands: ['值日助手', '快递助手', '快递', '查询当前快递'],
+    express: { enabled: true },
     source: 'fallback',
   };
 }
@@ -67,12 +72,35 @@ function isManagedGroup(policy, chatId) {
   return ids.length === 0 || ids.includes(chatId);
 }
 
-// p2p 值日指令放行判定（精确词 + 前缀词，清单来自策略）
+// 取件词形放行判定（已取n / 全部已取；策略正则清单，2026-09-17 快递助手）
+function isDutyPatternText(policy, text) {
+  if (!text) return false;
+  const patterns = Array.isArray(policy.p2pCommandPatterns) ? policy.p2pCommandPatterns : [];
+  return patterns.some((p) => {
+    try { return new RegExp(p).test(text); } catch { return false; }
+  });
+}
+
+// p2p 值日指令放行判定（精确词 + 前缀词 + 词形，清单来自策略）
 function isDutyCommandText(policy, text) {
   if (!text) return false;
   const cmds = Array.isArray(policy.p2pCommands) ? policy.p2pCommands : [];
   const prefixes = Array.isArray(policy.p2pCommandPrefixes) ? policy.p2pCommandPrefixes : [];
-  return cmds.includes(text) || prefixes.some((p) => text.startsWith(p));
+  return cmds.includes(text) || prefixes.some((p) => text.startsWith(p)) || isDutyPatternText(policy, text);
+}
+
+// 管辖群内 hub 转发判定（2026-09-17）：指令子集 groupCommands（裸词/带/ 双形态）+ 取件词形。
+// 刻意不含 p2pCommands 里的确认口语词（是/好/完成…）——否则非管辖群 @ 口语词被值日引导语误拦
+function isDutyGroupCommandText(policy, text) {
+  if (!text) return false;
+  const cmds = Array.isArray(policy.groupCommands) ? policy.groupCommands : [];
+  if (cmds.length) {
+    if (cmds.includes(text) || cmds.includes(String(text).replace(/^\//, ''))) return true;
+    return isDutyPatternText(policy, text);
+  }
+  // 旧版 duty-bot 无 groupCommands 字段：回落 p2pCommands（保持兼容）
+  const cmds2 = Array.isArray(policy.p2pCommands) ? policy.p2pCommands : [];
+  return cmds2.includes(text) || cmds2.includes(String(text).replace(/^\//, '')) || isDutyPatternText(policy, text);
 }
 
 // stub 测试用：清空策略缓存，强制下一次重新拉取
@@ -84,6 +112,8 @@ module.exports = {
   getDutyPolicy,
   isManagedGroup,
   isDutyCommandText,
+  isDutyGroupCommandText,
+  isDutyPatternText,
   buildFallbackPolicy,
   resetCacheForTests,
 };

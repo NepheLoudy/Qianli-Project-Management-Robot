@@ -154,7 +154,10 @@ function unAtEvent(text, msgId, chatId = 'oc_duty_group_test') {
     },
     sender: { sender_id: { open_id: 'ou_member_1', name: '队员甲' } },
   });
-  check('值日群 @+纯图片 → 静默（无回复、不转发）', !captured.botReplies.some((r) => r.messageId === 'm1i') && !captured.dutyPayloads.some((p) => p.chatId === 'oc_duty_group_test' && p.messageId === 'm1i'));
+  // 2026-09-17 快递助手口径：@+纯图片在快递群转为登记素材转发 duty-bot（无窗口 duty-bot 静默，用户侧仍无回复）
+  check('值日群 @+纯图片 → 转发图片载荷（快递窗口登记素材）+ 回执来自 duty-bot',
+    captured.dutyPayloads.some((p) => p.type === 'image' && p.chatType === 'group' && p.chatId === 'oc_duty_group_test' && p.messageId === 'm1i' && p.imageKey === 'ik_group_img')
+    && captured.botReplies.some((r) => r.messageId === 'm1i' && r.text.includes('占位回执')));
 
   // ② 值日管辖群：基础指令按策略关闭（值日群引导语）
   await chatService.processChatMessage(groupEvent('/help', 'm2'));
@@ -214,7 +217,7 @@ function unAtEvent(text, msgId, chatId = 'oc_duty_group_test') {
     message_type: 'image',
     content: JSON.stringify({ image_key: 'ik_test_123' }),
   }));
-  const imgPayload = captured.dutyPayloads.find((p) => p.type === 'image');
+  const imgPayload = captured.dutyPayloads.find((p) => p.type === 'image' && p.messageId === 'img1'); // group 图片转发（m1i）已先行入捕获，按 messageId 精确取 p2p 载荷
   check('p2p 图片 → 转发 image_key', imgPayload && imgPayload.imageKey === 'ik_test_123' && imgPayload.openId === 'ou_member_1', JSON.stringify(imgPayload));
 
   // ⑥ 非值日能力不受影响：p2p 非白名单 /status 仍被白名单拦截

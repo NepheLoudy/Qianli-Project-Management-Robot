@@ -11,7 +11,10 @@ const plaza = require('../services/plaza');
 
 const broadcastHistory = [];
 
-const STATE_FILE = path.join(__dirname, '..', '..', '.broadcast-state.json');
+// 播报去重状态文件（可经 BROADCAST_STATE_FILE 外迁项目外——SFTP 降级部署 rm -rf server/*
+// 会清掉项目内文件，2026-09-17 与 QUIET_BACKLOG_FILE 同款待遇）
+const STATE_FILE = process.env.BROADCAST_STATE_FILE
+  || path.join(__dirname, '..', '..', '.broadcast-state.json');
 
 function loadBroadcastState() {
   try {

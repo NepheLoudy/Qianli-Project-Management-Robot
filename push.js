@@ -280,9 +280,10 @@ function countEntries(content) {
 }
 
 function uploadPrivateConfigs(sftp) {
-  // 私有覆盖清单：关键词回答表 + 抽奖配置（窗口热改写出的 .local.json，权威在部署目标侧）
+  // 私有覆盖清单：关键词回答表 + @触发回答表 + 抽奖配置（窗口热改写出的 .local.json，权威在部署目标侧）
   const files = [
     'server/src/config/autoReplies.local.json',
+    'server/src/config/autoRepliesMention.local.json',
     'server/src/config/lottery.local.json',
   ];
   const next = (i) => {
