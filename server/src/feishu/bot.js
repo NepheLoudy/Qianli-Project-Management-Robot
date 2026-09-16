@@ -302,6 +302,26 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
     elements.push({ tag: 'markdown', content: lines.join('\n') });
   }
 
+  // 等回执待结单（2026-09-17）：无负责人/未填结单时间/超 7 日窗口的回执节点工单——
+  // 用户口径：等回执=没做完，不允许静默漏播
+  const waitingCount = (buckets.waiting || []).length;
+  if (waitingCount > 0) {
+    elements.push({ tag: 'hr' });
+    elements.push({
+      tag: 'markdown',
+      content: `**⏳ 等回执待结单（${waitingCount}个）**`,
+    });
+    const waitingLines = (buckets.waiting || []).map(t => {
+      const who = t.handlerName ? `👤 ${t.handlerName}` : '👤（无负责人）';
+      const code = t.code ? `「${t.code}」` : '';
+      const detail = t.deadlineFormatted
+        ? (t.daysLeft !== null && t.daysLeft < 0 ? `🔴 已超理想结单时间（📅 ${t.deadlineFormatted}）` : `📅 ${t.deadlineFormatted}（${t.daysLeft}天后）`)
+        : '未填理想结单时间';
+      return `⏳ ${who} ${code}**${t.title}** - ${detail}`;
+    });
+    elements.push({ tag: 'markdown', content: waitingLines.join('\n') });
+  }
+
   // pending: 意外暂停的项目单独说明（只列名字不 @，避免打扰）
   const pausedCount = pausedProjects.length;
   if (pausedCount > 0) {

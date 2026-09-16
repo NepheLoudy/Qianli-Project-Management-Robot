@@ -91,7 +91,7 @@ async function runDDLBroadcast() {
       // 未结单工单：优先按「负责人所属组别」分组（ticket-bot 计算，各组只看到自己的工单，
       // 播报对象为指定负责人/补充负责人）；分组数据失败时降级为全群共用同一份（不分组），
       // 仍失败则本次不含工单分栏，均不影响 DDL 播报本身
-      let ticketBuckets = { urgent: [], week: [], unclaimed: [] };
+      let ticketBuckets = { urgent: [], week: [], unclaimed: [], waiting: [] };
       let groupedTickets = null;
       try {
         groupedTickets = await ticketCloseService.getGroupedBuckets();

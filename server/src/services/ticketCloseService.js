@@ -56,6 +56,7 @@ const UNCLAIMED_MIN_AGE_MS = 6 * 60 * 60 * 1000;
  * 分桶（对齐 DDL 播报节奏）：
  *   - urgent：理想结单时间在 2 日内（含已超期，超期单独标注）
  *   - week：2 日外、7 日内
+ *   - waiting：等回执待结单（无负责人/未填结单时间/超 7 日，2026-09-17 起不允许漏播）
  *
  * @returns {Promise<{ urgent: Array, week: Array, unclaimed: Array }>}
  */
@@ -68,6 +69,7 @@ async function getUnclosedBuckets() {
   const urgent = [];
   const week = [];
   const unclaimed = [];
+  const waiting = []; // 等回执待结单：无负责人/未填结单时间/超 7 日（2026-09-17 口径，不允许静默漏播）
 
   for (const record of records) {
     const fields = record.fields;
@@ -106,35 +108,44 @@ async function getUnclosedBuckets() {
         }
       }
     }
-    if (people.length === 0) continue;
 
     const deadline = fields[deadlineField];
-    if (!deadline) continue;
-    const deadlineTs = dayjs(deadline);
-    if (!deadlineTs.isValid()) continue;
-
-    const daysLeft = deadlineTs.diff(now, 'day');
+    const deadlineTs = deadline ? dayjs(deadline) : null;
+    const hasDeadline = Boolean(deadlineTs && deadlineTs.isValid());
+    const daysLeft = hasDeadline ? deadlineTs.diff(now, 'day') : null;
     const display = getTicketDisplay(fields, record.record_id);
-    const ticket = {
-      recordId: record.record_id,
-      title: display.title,
-      code: display.code,
-      handlerId: people[0].id,
-      handlerName: people.map((p) => p.name || '未知').join('、'),
-      daysLeft,
-      deadlineFormatted: deadlineTs.format('YYYY-MM-DD'),
-    };
+    const baseTicket = { recordId: record.record_id, title: display.title, code: display.code };
 
-    if (daysLeft <= 2) urgent.push(ticket);
-    else if (daysLeft <= 7) week.push(ticket);
-    // 超出 7 日的不播报
+    if (people.length > 0 && daysLeft !== null && daysLeft <= 7) {
+      urgent.push({
+        ...baseTicket,
+        handlerId: people[0].id,
+        handlerName: people.map((p) => p.name || '未知').join('、'),
+        daysLeft,
+        deadlineFormatted: deadlineTs.format('YYYY-MM-DD'),
+      });
+    } else {
+      // 等回执待结单：无负责人 / 未填理想结单时间 / 超出 7 日窗口——也要曝光
+      waiting.push({
+        ...baseTicket,
+        handlerName: people.length ? people.map((p) => p.name || '未知').join('、') : '',
+        daysLeft,
+        deadlineFormatted: hasDeadline ? deadlineTs.format('YYYY-MM-DD') : '',
+      });
+    }
   }
 
   urgent.sort((a, b) => a.daysLeft - b.daysLeft);
   week.sort((a, b) => a.daysLeft - b.daysLeft);
   unclaimed.sort((a, b) => b.elapsedHours - a.elapsedHours); // 等最久的排前
+  waiting.sort((a, b) => {
+    if (a.daysLeft === null && b.daysLeft === null) return 0;
+    if (a.daysLeft === null) return 1;
+    if (b.daysLeft === null) return -1;
+    return a.daysLeft - b.daysLeft;
+  });
 
-  return { urgent, week, unclaimed };
+  return { urgent, week, unclaimed, waiting };
 }
 
 /**
