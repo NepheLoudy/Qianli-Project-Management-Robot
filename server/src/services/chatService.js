@@ -94,7 +94,10 @@ async function handleDutyForward(payload) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(8000), // duty-bot 半死（建连不回包）时不能拖住 hub 消息管线
+      // 15s（2026-09-19，原 8s）：请假/看板等链路含多趟表读写+私信，常规就 >8s——
+      // 杨杨文琦 09-18 请假登记成功但回执超时，用户侧误判失败连试 3 次；
+      // 仍设上限：duty-bot 半死（建连不回包）时不能拖住 hub 消息管线
+      signal: AbortSignal.timeout(15000),
     });
     if (!res.ok) {
       throw new Error(`值日服务响应失败: ${res.status}`);
@@ -103,7 +106,14 @@ async function handleDutyForward(payload) {
     return { reply: data.reply || '', handled: data.handled !== false };
   } catch (err) {
     console.error('[对话服务] 调用值日服务失败:', err.message);
-    return { reply: '❌ 值日服务暂不可用，请稍后再试', handled: true };
+    // 超时 ≠ 失败：duty 侧通常仍在继续处理（登记/写表已完成），照实告知而不是报错
+    const timedOut = err && (err.name === 'TimeoutError' || /timeout|aborted/i.test(err.message || ''));
+    return {
+      reply: timedOut
+        ? '⏳ 值日服务响应较慢：你的指令可能已在后台受理，请以机器人私信回执为准；若长时间无回执可稍后再试'
+        : '❌ 值日服务暂不可用，请稍后再试',
+      handled: true,
+    };
   }
 }
 

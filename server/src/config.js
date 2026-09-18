@@ -96,7 +96,9 @@ module.exports = {
     chatIds: process.env.MEETING_CHAT_IDS ? process.env.MEETING_CHAT_IDS.split(',') : [],
   },
   cron: {
-    schedule: process.env.CRON_SCHEDULE || '0 0 12 * * *',
+    // 默认 12:05（2026-09-19 起）：与 duty-bot 12:00 值日看板播报错峰——两者同秒拉
+    // bitable 会互踢 429 TooManyRequest（09-18 12:00 当日 DDL 播报整轮被限频炸掉）
+    schedule: process.env.CRON_SCHEDULE || '0 5 12 * * *',
   },
   ddl: {
     alertDays: parseInt(process.env.DDL_ALERT_DAYS || '2', 10),
