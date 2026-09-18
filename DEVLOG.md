@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v98**（2026-09-17，随本提交落地）。
+当前最新：**v99**（2026-09-18，随本提交落地）。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -620,3 +620,14 @@
 - 新增僵尸召回：子项目全部终态（completed/died）+ 父项目未完成（in_progress/waiting）+ 父项目 DDL 已进播报窗口（逾期/加急/7 日内）→ 父项目恢复为叶子行参与对应分栏，行尾标注「🧟 子项目均已收尾，父项目待结」。
 - 反例边界：有进行中/待认领子项目（父仍是容器）、父项目自身已完成、子项目仅暂停（pending 非终态）、DDL 在 7 日窗口外（临近自动浮现）——均维持原行为。
 - 新增 `server/scripts/stub-test-ddl-zombie.js`（7 项：召回/标记/分栏归位 + 4 组反例），入 push.js 测试闸门。
+
+### v99 · 2026-09-18 · 随本提交落地 · fix
+
+**DDL 播报限频重试修复——2026-09-18 12:00 播报被 TooManyRequest 炸掉且不重试，当日播报丢失（本会话排查并已手动补发）**
+
+- 事故还原：12:00:28 cron 准点触发，第一步 `getProjects()` 全量拉项目表（221 条）被飞书 bitable 限频（`获取记录失败: TooManyRequest`）抛错；`isFrequencyLimitError` 只认 `11232`/`frequency limited`，不认 `TooManyRequest`，非限频错误走 break 不重试——当日 4 群播报+12 个逾期确认私聊全部未发。去重标记按「至少一群送达才落盘」设计未误标，本会话经 `/api/bot/test-broadcast` 手动补发成功（4 群送达、12 确认私聊发出、state 更新 2026/9/18）。
+- 修复：`server/src/cron/index.js` `isFrequencyLimitError` 补 `TooManyRequest` 匹配——限频类错误进入既有指数退避重试（30s/60s/120s，deliveredGroups 只补失败群），整点多机器人齐发拉表的限频尖峰可自愈；并导出该函数供测试。
+- 新增 `server/scripts/stub-test-ddl-retry.js`（9 项：TooManyRequest 两形态/11232/frequency limited 回归 + 网络/表不存在/参数错/空值不误判），入 push.js 测试闸门。
+- 遗留并入：`抽奖配置表.xlsx`（2026-09-17 会话遗留改动，随本批入库）。
+- 排查旁证记录：9-16/9-17 12:00 的 error 日志均为「动态广场 TableIdNotFound 写入失败（忽略）」——动态广场表（tbld1zHXkTzko20p）在 9-16 前已不存在于「机器人项目看板」base，plaza.append 天天失败但不阻塞播报；表重建待另行处理（建表脚本 create-plaza-tables.js 幂等可重建）。
+- 运维提示：本机笔记本系统时钟曾慢约 1h47m（部署目标与飞书 Date 头核对为准），已提醒校时；排查期间笔记本不在实验室网段导致 SSH 不可达属网络位置问题，非故障。

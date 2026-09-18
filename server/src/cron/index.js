@@ -47,7 +47,9 @@ const RETRY_CONFIG = {
 function isFrequencyLimitError(err) {
   if (!err) return false;
   const message = err.message || '';
-  return message.includes('11232') || message.includes('frequency limited');
+  // TooManyRequest：bitable 读接口限频（2026-09-18 12:00 整点多机器人齐发拉表被 429，
+  // 播报第一步 getProjects 即炸且此前不识别不重试，当日播报丢失）
+  return message.includes('11232') || message.includes('frequency limited') || message.includes('TooManyRequest');
 }
 
 function sleep(ms) {
@@ -307,4 +309,5 @@ module.exports = {
   runDDLBroadcast,
   getBroadcastHistory,
   getCronStatus,
+  isFrequencyLimitError,
 };
