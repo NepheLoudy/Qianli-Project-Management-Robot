@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v101**（2026-09-20，随本提交落地）。
+当前最新：**v102**（2026-09-20，随本提交落地）。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -652,3 +652,10 @@
 - **DDL 卡 week 桶修复**：`getUnclosedBuckets` 此前 `daysLeft<=7` 全进 urgent，week 桶恒空——降级链路下 3-7 日工单错标「2日内加急」、「7日内」栏永不显示。改为 urgent=2 日内（含超期）、week=3-7 日、waiting=其余，与注释口径一致。
 - **三处转发/发送补 15s 超时**：`bot.sendMessage`（webhook 卡片，挂起会拖死整个 DDL 播报循环）、`handleApprovalCommand`、`handlePrintCommand` 补 `AbortSignal.timeout(15000)`，与 duty 转发超时口径一致。
 - 测试：server 三套桩（ddl-retry / ddl-zombie / duty-branch）全过。
+
+## v102 · 2026-09-20 · 随本提交落地 · chore
+
+**用户拍板：动态广场机器人停写（PLAZA_ENABLED 开关）**
+
+- 2026-09-20 用户拍板：动态广场相关功能由用户自维护，机器人只对各自现有业务看板负责。plaza.js `enabled()` 加 `PLAZA_ENABLED` 开关（默认关，显式设 `1` 才恢复写入）——停写后即使用户把「动态广场」表从回收站恢复/重建，机器人也不会往里灌数据；TableIdNotFound warn 同步终结。DDL 播报等广场钩子保留代码不动，仅由开关关断。
+- gateway 的「网关日活跃」表是另一张仍在役的表，不在本次停写范围。`.env.example` 补注释。duty-branch 桩套件全过。
