@@ -252,7 +252,7 @@ async function resolveImageFileTokens(imageKeys, messageId) {
   const fileTokens = [];
   for (let i = 0; i < imageKeys.length && i < 9; i++) {
     try {
-      const buf = await client.downloadImage(imageKeys[i]);
+      const buf = await client.downloadImage(messageId, imageKeys[i]);
       const token = await client.uploadMediaToBitable(buf, `kw_${messageId || Date.now()}_${i}.jpg`);
       fileTokens.push(token);
     } catch (err) {

@@ -67,6 +67,7 @@ async function sendMessage(cardContent, webhookUrl) {
 
   const res = await fetch(url, {
     method: 'POST',
+    signal: AbortSignal.timeout(15000), // webhook 挂起会拖死整个 DDL 播报循环，必须带超时（同 requestAPI 口径）
     headers: {
       'Content-Type': 'application/json',
     },

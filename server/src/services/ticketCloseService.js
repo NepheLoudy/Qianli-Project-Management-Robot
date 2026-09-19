@@ -116,8 +116,18 @@ async function getUnclosedBuckets() {
     const display = getTicketDisplay(fields, record.record_id);
     const baseTicket = { recordId: record.record_id, title: display.title, code: display.code };
 
-    if (people.length > 0 && daysLeft !== null && daysLeft <= 7) {
+    // 分桶对齐注释口径：urgent=2 日内（含超期负数），week=2 日外 7 日内，waiting=其余。
+    // 此前 daysLeft<=7 全进 urgent，week 桶恒空，3-7 日工单被错标「2日内加急」（2026-09-20 修复）
+    if (people.length > 0 && daysLeft !== null && daysLeft <= 2) {
       urgent.push({
+        ...baseTicket,
+        handlerId: people[0].id,
+        handlerName: people.map((p) => p.name || '未知').join('、'),
+        daysLeft,
+        deadlineFormatted: deadlineTs.format('YYYY-MM-DD'),
+      });
+    } else if (people.length > 0 && daysLeft !== null && daysLeft <= 7) {
+      week.push({
         ...baseTicket,
         handlerId: people[0].id,
         handlerName: people.map((p) => p.name || '未知').join('、'),

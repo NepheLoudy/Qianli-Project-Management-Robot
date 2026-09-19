@@ -131,22 +131,26 @@ async function maybeForwardExpressObserve(event) {
     if (!dutyPolicy.isManagedGroup(policy, message.chat_id)) return;
     if (policy.express && policy.express.enabled === false) return;
     const msgType = message.message_type || message.msg_type;
+    const imageKeysAll = keywordService.extractImageKeys(message);
     let text = '';
-    let imageKey = '';
-    let imageKeys;
-    if (msgType === 'image') {
-      const keys = keywordService.extractImageKeys(message);
-      imageKey = keys[0] || '';
-    } else {
+    if (msgType !== 'image') {
       text = extractTextWithoutMention(message);
-      if (keywordService.extractImageKeys(message).length) imageKeys = undefined; // 非图片消息不带图
     }
-    if (!text && !imageKey) return;
+    if (!text && imageKeysAll.length === 0) return;
     const senderId = (event.sender && event.sender.sender_id && (event.sender.sender_id.open_id || event.sender.sender_id.user_id)) || '';
-    await handleDutyForward({
-      type: 'express_observe', text, imageKey, imageKeys, openId: senderId,
+    const basePayload = {
+      type: 'express_observe', openId: senderId,
       chatType: 'group', chatId: message.chat_id, messageId: message.message_id,
-    });
+    };
+    // 富文本/post 图文混合拆两次转发：先文本（duty 登记取件码记录），后图
+    //（duty observeImage 的配对逻辑会把图补挂到本窗口本人最新「无图」记录，即刚登记的那条）。
+    // 单载荷同传 text+imageKey 会被 duty 的 image 分支整体接管、文本丢失。v97 的透传只加了一行无操作赋值，此处落实。
+    if (text) {
+      await handleDutyForward({ ...basePayload, text });
+    }
+    if (imageKeysAll.length > 0) {
+      await handleDutyForward({ ...basePayload, imageKey: imageKeysAll[0], imageKeys: imageKeysAll });
+    }
   } catch (err) {
     console.warn('[对话服务] 快递窗口观察转发失败:', err.message);
   }
@@ -278,6 +282,7 @@ async function handleApprovalCommand(command, args) {
   try {
     const res = await fetch(`${serviceUrl}/api/chat/command`, {
       method: 'POST',
+      signal: AbortSignal.timeout(15000), // 与 duty 转发同款超时：下游挂起不能拖住 hub 事件循环
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ command, args }),
     });
@@ -538,6 +543,7 @@ async function handlePrintCommand(command, args) {
   try {
     const res = await fetch(`${printServerUrl}/api/chat/command`, {
       method: 'POST',
+      signal: AbortSignal.timeout(15000), // 与 duty/approval 转发同款超时
       headers: {
         'Content-Type': 'application/json',
       },

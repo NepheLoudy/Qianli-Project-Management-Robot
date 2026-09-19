@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v100**（2026-09-19，随本提交落地）。
+当前最新：**v101**（2026-09-20，随本提交落地）。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -642,3 +642,13 @@
 - **事件复盘（09-18）**：杨杨文琦私聊请假（09-19/09-27 两天+连续缺勤加罚共 3 条补偿义务 20:06 登记成功），hub 20:07/21:56×3 共 4 次转发超时误报失败，用户重试 3 次全扑空——duty 侧提速见 duty-bot v32（回执不再 await 被抽调人私信）。
 - 文档：README 4 处 12:00→12:05、ticket-pm/LOGIC-MAP §2.2、指南 MD/桌面 HTML DDL 播报时刻。
 - 测试：duty-branch/ddl-zombie/ddl-retry 三套全绿。
+
+## v101 · 2026-09-20 · 随本提交落地 · fix
+
+**全量 debug 批：图片转存 234001 根因修复 + 快递观察图文分离 + DDL 卡 week 桶 + 转发超时收口**
+
+- **P1 · 关键词监听图片转存换消息资源接口**：`downloadImage` 仍用旧 `GET /im/v1/images/{key}`（只能下机器人自传图，用户图一律 234001，生产 error 日志持续刷屏、发言表图片静默丢失）。换 `GET /im/v1/messages/{message_id}/resources/{key}?type=image`（duty-bot v28 同款修复，共用应用权限已生产验证），调用点补传 message_id。
+- **快递观察转发图文分离**：v97 的「富文本多图透传」实为无操作（`imageKeys = undefined` 赋值本来就有），post 图文消息只转文字、图全丢。改为先文本后图两次顺序转发——duty `observeImage` 的配对逻辑会把图补挂到本窗口本人最新「无图」记录（即刚登记的取件码记录）。
+- **DDL 卡 week 桶修复**：`getUnclosedBuckets` 此前 `daysLeft<=7` 全进 urgent，week 桶恒空——降级链路下 3-7 日工单错标「2日内加急」、「7日内」栏永不显示。改为 urgent=2 日内（含超期）、week=3-7 日、waiting=其余，与注释口径一致。
+- **三处转发/发送补 15s 超时**：`bot.sendMessage`（webhook 卡片，挂起会拖死整个 DDL 播报循环）、`handleApprovalCommand`、`handlePrintCommand` 补 `AbortSignal.timeout(15000)`，与 duty 转发超时口径一致。
+- 测试：server 三套桩（ddl-retry / ddl-zombie / duty-branch）全过。

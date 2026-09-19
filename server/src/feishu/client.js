@@ -76,15 +76,23 @@ async function requestAPI(method, path, params = {}) {
   }
 }
 
-// 下载 IM 消息图片（二进制）。需应用开通 im:image（获取图片）权限；
+// 下载 IM 消息图片（二进制）。用户发送的图片不能用 GET /im/v1/images/{image_key}
+//（该接口只能下载机器人自己上传的图片，用户图一律 234001），必须走消息资源接口
+// GET /im/v1/messages/{message_id}/resources/{file_key}?type=image（duty-bot v28 同款修复）；
 // 未开通或失败时抛错，由调用方降级（如关键词监听降级为无图记录，不阻塞发言入库）。
-async function downloadImage(imageKey) {
+async function downloadImage(messageId, imageKey) {
+  if (!messageId) {
+    throw new Error('下载图片失败: 缺少 message_id（消息资源接口必填）');
+  }
   const token = await getTenantAccessToken();
-  const res = await fetch(`https://open.feishu.cn/open-apis/im/v1/images/${encodeURIComponent(imageKey)}`, {
-    method: 'GET',
-    signal: AbortSignal.timeout(30000),
-    headers: { 'Authorization': `Bearer ${token}` },
-  });
+  const res = await fetch(
+    `https://open.feishu.cn/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/resources/${encodeURIComponent(imageKey)}?type=image`,
+    {
+      method: 'GET',
+      signal: AbortSignal.timeout(30000),
+      headers: { 'Authorization': `Bearer ${token}` },
+    }
+  );
 
   const contentType = res.headers.get('content-type') || '';
   if (!res.ok || contentType.includes('application/json')) {
