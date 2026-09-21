@@ -329,6 +329,46 @@ ${lotteryHelp ? lotteryHelp + '\n' : ''}
   • 群内消息命中「关键词回答」表会自动回复（无需@）`;
 }
 
+// 舰队健康探测（2026-09-21 v105）：/status 附带部署目标本机全服务健康快照。
+// 走飞书长连接的私聊即可查看——管理员不在开发内网时也能远程看状态
+const FLEET_SERVICES = [
+  { name: 'feishu-gateway 网关', port: 3010 },
+  { name: 'hub 对话枢纽', port: 3000 },
+  { name: 'bambu 打印预约', port: 3001 },
+  { name: 'approval 财务审批', port: 3002 },
+  { name: 'ticket 工单', port: 3003 },
+  { name: 'duty 值日', port: 3006 },
+  { name: 'wecom 考勤周报', port: 3007 },
+];
+
+async function probeFleetHealth() {
+  const results = await Promise.all(FLEET_SERVICES.map(async (s) => {
+    try {
+      const res = await fetch(`http://127.0.0.1:${s.port}/api/health`, { signal: AbortSignal.timeout(3000) });
+      return { ...s, ok: res.ok, code: res.status };
+    } catch (err) {
+      return { ...s, ok: false, code: 0 };
+    }
+  }));
+  return results;
+}
+
+async function fleetHealthLines() {
+  const results = await probeFleetHealth();
+  const lines = results.map((r) => `   ${r.ok ? '✅' : '❌'} ${r.name}(:${r.port})${r.ok ? '' : ' 无响应'}`);
+  // 网关深度信息：长连接状态 + 投递统计（事件链路是否健康的决定性指标）
+  const gateway = results.find((r) => r.port === 3010);
+  if (gateway && gateway.ok) {
+    try {
+      const j = await (await fetch('http://127.0.0.1:3010/api/health', { signal: AbortSignal.timeout(3000) })).json();
+      lines.push(`   网关长连接：${j.ws === 'running' ? '✅ running' : `❌ ${j.ws || '未知'}`}，投递计数 ok=${j.delivery?.ok ?? '?'} failed=${j.delivery?.failed ?? '?'}`);
+    } catch (err) {
+      lines.push('   网关长连接：⚠️ 详情读取失败');
+    }
+  }
+  return [`🩺 舰队健康（部署目标本机探测）：`, ...lines];
+}
+
 async function handleStatusCommand() {
   const keywordsConfig = keywordService.loadKeywordsConfig();
   const autoRepliesConfig = autoReplyService.loadAutoRepliesConfig();
@@ -342,6 +382,7 @@ async function handleStatusCommand() {
     `当前时间：${dayjs().format('YYYY-MM-DD HH:mm:ss')}`,
     // 网关模式下 useLongConnection=false 是正确配置，不该显示 ❌
     `事件接入：${config.feishuEvent.useLongConnection ? '长连接模式（仅调试用，会与网关抢事件）' : '✅ 网关转发模式（feishu-gateway）'}`,
+    ...(await fleetHealthLines()),
     ``,
     `📋 关键词监听：${keywordsConfig.enabled ? '✅ 已启用' : '❌ 未启用'}`,
     `   监听关键词数量：${keywordsConfig.keywords.length} 个`,
@@ -733,4 +774,5 @@ module.exports = {
   isP2pCommandAllowed,
   handleDutyForward, // ddlConfirmService R9 值日词表让位转发用（2026-09-15）
   maybeForwardExpressObserve, // 快递登记窗口观察（eventSubscription 非@群消息调用）
+  fleetHealthLines, // stub 测试断言 /status 舰队健康段用
 };
