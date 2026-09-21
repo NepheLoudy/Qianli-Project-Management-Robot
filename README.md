@@ -415,6 +415,7 @@ node push.js "提交说明"
 ## 定时任务
 
 - **DDL 播报**：每天 12:05 执行（2026-09-19 起，与 duty-bot 12:00 值日播报错峰；可通过 `CRON_SCHEDULE` 配置，时区 Asia/Shanghai）
+- **失败重试**：限频错误（11232/TooManyRequest）与瞬时网络错误（超时/断连/自签证书劫持/DNS 失败，2026-09-21 v103 起）同走退避重试，最多 3 次（30s/60s），全程留在白天窗口不触晚间静默；已送达群跨重试去重（`deliveredGroups`），不会重复播报；全部失败当日可用 `/api/bot/test-broadcast` 或各群 `/test-ddl` 补发
 
 ## 开发说明
 

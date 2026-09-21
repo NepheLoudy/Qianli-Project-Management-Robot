@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v102**（2026-09-20，随本提交落地）。
+当前最新：**v103**（2026-09-21，随本提交落地）。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -659,3 +659,12 @@
 
 - 2026-09-20 用户拍板：动态广场相关功能由用户自维护，机器人只对各自现有业务看板负责。plaza.js `enabled()` 加 `PLAZA_ENABLED` 开关（默认关，显式设 `1` 才恢复写入）——停写后即使用户把「动态广场」表从回收站恢复/重建，机器人也不会往里灌数据；TableIdNotFound warn 同步终结。DDL 播报等广场钩子保留代码不动，仅由开关关断。
 - gateway 的「网关日活跃」表是另一张仍在役的表，不在本次停写范围。`.env.example` 补注释。duty-branch 桩套件全过。
+
+## v103 · 2026-09-21 · 随本提交落地 · fix
+
+**DDL 播报：瞬时网络错误纳入退避重试（2026-09-21 12:05 播报丢失修复）**
+
+- 事故：2026-09-21 12:05 DDL 播报撞上校园网链路劣化窗口（网关侧 `self-signed certificate` 指纹、飞书 API 面性超时），`getProjects` 抛 `TimeoutError`——旧 `RETRY_CONFIG` 重试只认限频错误（`isFrequencyLimitError`：11232/frequency limited/TooManyRequest），超时走 `else break` 直接放弃，当日播报丢失（当晚已用 `/api/bot/test-broadcast` 手动补播）。
+- 修复：`server/src/cron/index.js` 新增 `isTransientNetworkError`（超时/aborted/自签证书/证书错误/ECONNRESET/ECONNREFUSED/ETIMEDOUT/EHOSTUNREACH/ENETUNREACH/ENOTFOUND/EAI_AGAIN/socket hang up/fetch failed/disconnected/network），与限频同走既有退避重试（30s/60s，最多 3 次）；末次失败不空睡直接落败。重试全程留在 12:05 后数分钟内，不触晚间静默闸门；已送达群跨重试去重（`deliveredGroups`）与「至少一群送达才落盘」的当日标记语义不变，不会重复播报。
+- 测试：`stub-test-ddl-retry.js` 扩 14 条瞬时网络错误断言（含 2026-09-21 实际失败形态 `The operation was aborted due to timeout`）；三套桩（ddl-retry/ddl-zombie/duty-branch）全过。
+- 文档：README「定时任务」节补失败重试行为。

@@ -52,6 +52,16 @@ function isFrequencyLimitError(err) {
   return message.includes('11232') || message.includes('frequency limited') || message.includes('TooManyRequest');
 }
 
+function isTransientNetworkError(err) {
+  if (!err) return false;
+  const message = err.message || '';
+  // 校园网会话被踢/链路抖动窗口：网关侧表现为新连接被认证页自签证书劫持、
+  // API 请求整体超时（2026-09-21 12:05 DDL播报因 TimeoutError 不属限频、
+  // 旧逻辑只重试限频错误，当日播报丢失）。这类瞬时网络错误与限频同待遇，
+  // 走同一退避重试；已送达群跨重试去重（deliveredGroups），不会重复播报
+  return /timeout|aborted|self-signed|certificate|ECONNRESET|ECONNREFUSED|ECONNABORTED|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|EAI_AGAIN|socket hang up|fetch failed|disconnected|network/i.test(message);
+}
+
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -224,6 +234,10 @@ async function runDDLBroadcast() {
         const delay = Math.min(RETRY_CONFIG.initialDelay * Math.pow(2, attempt - 1), RETRY_CONFIG.maxDelay);
         console.warn(`[DDL播报] 第 ${attempt} 次尝试失败，频率限制，将在 ${delay / 1000} 秒后重试...`);
         await sleep(delay);
+      } else if (isTransientNetworkError(err) && attempt < RETRY_CONFIG.maxAttempts) {
+        const delay = Math.min(RETRY_CONFIG.initialDelay * Math.pow(2, attempt - 1), RETRY_CONFIG.maxDelay);
+        console.warn(`[DDL播报] 第 ${attempt} 次尝试失败，网络瞬时错误，将在 ${delay / 1000} 秒后重试...`);
+        await sleep(delay);
       } else {
         console.error('[DDL播报] 播报失败:', err);
         break;
@@ -310,4 +324,5 @@ module.exports = {
   getBroadcastHistory,
   getCronStatus,
   isFrequencyLimitError,
+  isTransientNetworkError,
 };
