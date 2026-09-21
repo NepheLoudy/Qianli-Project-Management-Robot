@@ -46,8 +46,12 @@ async function sendOverdueConfirmation(project) {
   const overdueDays = Math.abs(project.daysLeft);
   const ownerName = project.ownerName || effOwner[0]?.name || '同学';
 
+  // 确认编号：同一 owner 内递增（12h 窗口内稳定）。多项目同时到期时，
+  // 各条提醒带各自编号，回复「编号+是/否」即可定向确认，不再混淆
+  const seq = existing.reduce((m, p) => Math.max(m, p.seq || 0), 0) + 1;
+
   const p2pText = [
-    `⚠️ 项目逾期提醒`,
+    `⚠️ 项目逾期提醒（确认编号 ${seq}）`,
     ``,
     `${ownerName}，你负责的以下项目已逾期：`,
     `• 项目名称：${project.name}`,
@@ -58,18 +62,20 @@ async function sendOverdueConfirmation(project) {
     `请记得更新看板状态。该项目是否已完成？`,
     `• 回复 "是" - 我会帮你把状态改为 completed（请在 ${CONFIRM_WINDOW_HOURS} 小时内回复）`,
     `• 回复 "否" - 状态保持不变`,
+    `• 多个项目待确认时，回复「编号+是/否」定向确认（如 "${seq} 是"）`,
     `• 超时未回复 - 状态保持不变，明日播报会再次提醒`,
   ].join('\n');
 
   try {
     await bot.sendTextToUser(ownerOpenId, p2pText);
-    console.log(`[DDL确认] 已向 ${ownerName}(${ownerOpenId}) 发送项目 "${project.name}" 的确认请求（私聊）`);
+    console.log(`[DDL确认] 已向 ${ownerName}(${ownerOpenId}) 发送项目 "${project.name}" 的确认请求（私聊，编号 ${seq}）`);
 
     existing.push({
       projectId: project.id,
       projectName: project.name,
       ownerName,
       ownerOpenId,
+      seq,
       sentAt: Date.now(),
       sentMode: 'p2p',
       chatId: null, // 私聊不限制来源
@@ -101,17 +107,34 @@ async function sendOverdueConfirmation(project) {
  *
  * @returns {'yes' | 'no' | null}
  */
+const YES_RE = /^(是|是的|yes|y|确认|完成|已完成|做完了|完成了|搞定|搞定了|好|好的|没问题|done|ok|okay)$/i;
+const NO_RE = /^(否|不|不是|no|n|未完成|没完成|没做完|还没|还没完成|没有完成|not yet|pending)$/i;
+
 function parseConfirmationReply(text) {
   if (!text) return null;
   const t = text.trim().toLowerCase();
 
-  const yesPatterns = /^(是|是的|yes|y|确认|完成|已完成|做完了|完成了|搞定|搞定了|好|好的|没问题|done|ok|okay)$/i;
-  const noPatterns = /^(否|不|不是|no|n|未完成|没完成|没做完|还没|还没完成|没有完成|not yet|pending)$/i;
-
-  if (yesPatterns.test(t)) return 'yes';
-  if (noPatterns.test(t)) return 'no';
+  if (YES_RE.test(t)) return 'yes';
+  if (NO_RE.test(t)) return 'no';
 
   return null;
+}
+
+/**
+ * 解析「编号+是/否」定向回复（多项目待确认时的区分性，2026-09-21）。
+ * 形态：`2 是` / `2是` / `2：还没` / `#2 是`。
+ * 编号限 1-3 位数字且后面必须紧跟确认/否认词——否则普通文本
+ * （如日志串 "234001: invalid..."）会被误当定向回复。
+ *
+ * @returns {{seq: number|null, reply: 'yes'|'no'|null}}
+ */
+function parseTargetedReply(text) {
+  const t = String(text || '').trim().toLowerCase().replace(/^#/, '');
+  const m = /^(\d{1,3})\s*[:：,，、]?\s*(.+)$/.exec(t);
+  if (!m) return { seq: null, reply: null };
+  const reply = parseConfirmationReply(m[2]);
+  if (!reply) return { seq: null, reply: null };
+  return { seq: Number(m[1]), reply };
 }
 
 /**
@@ -152,18 +175,19 @@ async function handleReply(event) {
   // 找到匹配的待确认项目。
   // 来源必须与发送方式一致：私聊发出的确认只能私聊回复（群聊里含「是/否」的
   // 日常消息不得被当成确认），群聊发出的只能在同一个群里回复
-  // 候选按回复来源过滤；同一来源多条待确认（同 owner 多项目）取「最近发送的一条」——
-  // 用户总是针对最新一条提醒回复（2026-09-13：原先 findIndex 恒取第一条，多项目时「是」会完成错的项目）
+  // 候选按回复来源过滤；默认取法=「最近发送的一条」（2026-09-13 口径）。
+  // 2026-09-21 起私聊多项目裸回复不再用该默认（会完成错的项目），改走编号定向/引导；
+  // 该默认仅剩单项目与群聊多项目两个场景在用
   const candidateIdx = pendingList
     .map((p, i) => ({ p, i }))
     .filter(({ p }) => (p.sentMode === 'p2p'
       ? chatType === 'p2p'
       : (p.sentMode === 'group' && chatType === 'group' && p.chatId && p.chatId === replyChatId)));
-  const pendingIndex = candidateIdx.length === 0
+  const fallbackIndex = candidateIdx.length === 0
     ? -1
     : candidateIdx.reduce((best, cur) => (cur.p.sentAt > pendingList[best].sentAt ? cur.i : best), candidateIdx[0].i);
 
-  if (pendingIndex === -1) {
+  if (fallbackIndex === -1) {
     // 没有匹配的待确认项目（可能是群聊串行）
     if (chatType === 'group' && replyChatId) {
       console.log(`[DDL确认] 群聊 ${replyChatId} 的回复不匹配任何待确认项目，跳过`);
@@ -211,7 +235,40 @@ async function handleReply(event) {
     }
   }
 
-  const reply = parseConfirmationReply(text);
+  // —— 定向/裸回复分流（2026-09-21 多项目区分性）——
+  // 定向「编号+是/否」：编号命中候选即定向该条；裸回复且私聊多项目：不再猜
+  // 「最近发送的一条」，回编号清单引导定向。单项目裸回复与群聊行为不变
+  const seqList = () => candidateIdx.slice().sort((a, b) => (a.p.seq || 0) - (b.p.seq || 0))
+    .map(({ p }) => `${p.seq}. ${p.projectName}`).join('\n');
+
+  let pendingIndex = fallbackIndex;
+  let reply = parseConfirmationReply(text);
+
+  const targeted = parseTargetedReply(text);
+  if (targeted.seq != null) {
+    const hit = candidateIdx.find(({ p }) => (p.seq || 0) === targeted.seq);
+    if (!hit) {
+      if (chatType === 'p2p') {
+        try {
+          await bot.sendTextToUser(senderId,
+            `未找到编号 ${targeted.seq} 对应的待确认项目（可能已确认或超时）。当前待确认：\n${seqList()}\n例如："${candidateIdx[0].p.seq} 是"`);
+        } catch (err) {
+          console.error('[DDL确认] 发送引导提示失败:', err.message);
+        }
+      }
+      return { handled: false, reason: `编号 ${targeted.seq} 无匹配待确认项目` };
+    }
+    pendingIndex = hit.i;
+    reply = targeted.reply;
+  } else if (reply && candidateIdx.length > 1 && chatType === 'p2p') {
+    try {
+      await bot.sendTextToUser(senderId,
+        `你有多个项目待确认，请回复「编号+是/否」定向确认：\n${seqList()}\n例如："${candidateIdx[0].p.seq} 是" / "${candidateIdx[candidateIdx.length - 1].p.seq} 还没"`);
+    } catch (err) {
+      console.error('[DDL确认] 发送引导提示失败:', err.message);
+    }
+    return { handled: false, reason: '多项目待确认，已引导编号定向回复' };
+  }
 
   if (!reply) {
     // 群聊中保守策略：不回复未识别的消息，避免反复触发
@@ -222,7 +279,12 @@ async function handleReply(event) {
         return { handled: false, reason: 'p2p 非文本消息，静默交由后续链路处理' };
       }
       const pending = pendingList[pendingIndex];
-      let tipText = `未识别你的回复。请回复 "是" 或 "否" 来确认项目 "${pending.projectName}" 是否已完成。\n• "是" → 标记为已完成\n• "否" → 保持当前状态`;
+      let tipText;
+      if (candidateIdx.length > 1) {
+        tipText = `未识别你的回复。当前待确认项目：\n${seqList()}\n请回复「编号+是/否」定向确认（如 "${candidateIdx[0].p.seq} 是"）`;
+      } else {
+        tipText = `未识别你的回复。请回复 "是" 或 "否" 来确认项目 "${pending.projectName}" 是否已完成。\n• "是" → 标记为已完成\n• "否" → 保持当前状态`;
+      }
       try {
         await bot.sendTextToUser(senderId, tipText);
       } catch (err) {
@@ -316,6 +378,7 @@ function getPendingStats() {
       stats.push({
         ownerOpenId: ownerId,
         ownerName: p.ownerName,
+        seq: p.seq || null,
         projectId: p.projectId,
         projectName: p.projectName,
         sentAt: new Date(p.sentAt).toISOString(),
@@ -331,5 +394,6 @@ module.exports = {
   handleReply,
   getPendingStats,
   parseConfirmationReply,
+  parseTargetedReply,
   pendingConfirmations, // stub 测试注入待确认项用（勿在业务代码直写）
 };

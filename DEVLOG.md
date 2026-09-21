@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v103**（2026-09-21，随本提交落地）。
+当前最新：**v104**（2026-09-21，随本提交落地）。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -668,3 +668,13 @@
 - 修复：`server/src/cron/index.js` 新增 `isTransientNetworkError`（超时/aborted/自签证书/证书错误/ECONNRESET/ECONNREFUSED/ETIMEDOUT/EHOSTUNREACH/ENETUNREACH/ENOTFOUND/EAI_AGAIN/socket hang up/fetch failed/disconnected/network），与限频同走既有退避重试（30s/60s，最多 3 次）；末次失败不空睡直接落败。重试全程留在 12:05 后数分钟内，不触晚间静默闸门；已送达群跨重试去重（`deliveredGroups`）与「至少一群送达才落盘」的当日标记语义不变，不会重复播报。
 - 测试：`stub-test-ddl-retry.js` 扩 14 条瞬时网络错误断言（含 2026-09-21 实际失败形态 `The operation was aborted due to timeout`）；三套桩（ddl-retry/ddl-zombie/duty-branch）全过。
 - 文档：README「定时任务」节补失败重试行为。
+
+## v104 · 2026-09-21 · 随本提交落地 · feat
+
+**DDL 逾期确认：多项目编号定向回复（2026-09-21 用户反馈区分性缺失）**
+
+- 痛点：同一人多个项目同时逾期时各收一条确认私聊（项目名还可能雷同，如实例中两条「（基建支持项目）」），裸回「是」按 2026-09-13 口径恒完成「最近发送的一条」——用户无法定向，可能完成错的项目。
+- 发送侧：`ddlConfirmService.sendOverdueConfirmation` 文案头部带「确认编号 N」（同 owner 内按发送序递增，12h 窗口内稳定），并新增教学行「多个项目待确认时，回复『编号+是/否』定向确认」。
+- 回复侧：新增 `parseTargetedReply`（`2 是`/`2是`/`2：还没`/`#2 是`；编号限 1-3 位且必须紧跟确认/否认词，防普通文本如日志串 "234001: ..." 误判）；私聊裸回复且候选 >1 时不再猜最新一条，改回编号清单引导定向（不消费待确认记录）；编号不存在时提示当前清单；单项目裸回复与群聊行为不变。未识别回复提示在多项目场景同步改为列清单形态。
+- 测试：新增 `stub-test-ddl-confirm-targeted.js`（24 断言：编号解析纯用例、发送编号入文案与记录、裸回复引导不写库、定向完成/否认、编号不存在提示、单项目裸回复兼容、日志串不误判、getPendingStats 暴露 seq）；四套桩（ddl-retry/ddl-zombie/duty-branch/confirm-targeted）全过，R9 值日让位用例无回归。
+- 文档：README「逾期项目私聊确认」节补定向回复口径。
