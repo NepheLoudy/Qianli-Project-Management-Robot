@@ -167,7 +167,17 @@ app.get('/api/hub/policy', (req, res) => {
     p2pCommandAllow: { openIdCount: config.p2pCommandAllow.openIds.length, chatIdCount: config.p2pCommandAllow.chatIds.length },
     broadcastGroups: (config.broadcastGroups || []).map((g) => ({ key: g.key, chatId: g.chatId, label: g.label, hasWebhook: Boolean(g.webhookUrl) })),
     cron: { ddlBroadcast: config.cron.schedule },
-    ddl: config.ddl,
+    ddl: {
+      alertDays: config.ddl.alertDays,
+      // 负责人群整合播报（webhook 等同凭据，与 broadcastGroups 同口径只出布尔不出原文）
+      leaderGroup: {
+        label: config.ddl.leaderGroup.label,
+        chatId: config.ddl.leaderGroup.chatId,
+        hasWebhook: Boolean(config.ddl.leaderGroup.webhookUrl),
+        mention: config.ddl.leaderGroup.mentionName,
+        hasMentionOpenId: Boolean(config.ddl.leaderGroup.mentionOpenId),
+      },
+    },
   });
 });
 

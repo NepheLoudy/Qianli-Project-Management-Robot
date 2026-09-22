@@ -102,6 +102,17 @@ module.exports = {
   },
   ddl: {
     alertDays: parseInt(process.env.DDL_ALERT_DAYS || '2', 10),
+    // 负责人群整合播报（2026-09-22）：每日 DDL 播报时把「逾期 + 临期（alertDays 内）」
+    // 跨播报群汇总后再播一遍（filter=all 全量口径，不分人员字段），卡头 @ 指定负责人。
+    // webhook 优先（与各播报群同款）；未配 webhook 时用 chat_id 走 im API 发卡。
+    // 两者都空 = 功能关闭。open_id/chat_id 只存 .env（不硬编码进仓库，同审批群先例）。
+    leaderGroup: {
+      label: '负责人群',
+      webhookUrl: process.env.LEADER_WEBHOOK_URL || '',
+      chatId: process.env.LEADER_CHAT_ID || '',
+      mentionOpenId: process.env.LEADER_MENTION_OPEN_ID || '',
+      mentionName: process.env.LEADER_MENTION_NAME || '负责人',
+    },
   },
   printServer: {
     url: process.env.PRINT_SERVER_URL || 'http://localhost:3001',

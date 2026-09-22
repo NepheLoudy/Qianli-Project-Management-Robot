@@ -382,6 +382,80 @@ async function sendDDLReport(overdueProjects, urgentProjects, weekProjects, quot
   return sendMessage(card, webhookUrl);
 }
 
+// 通过 chat_id 直接发卡片消息（im API；负责人群无 webhook 时的发送通道）
+async function sendCardToChat(chatId, card) {
+  if (!chatId) {
+    throw new Error('sendCardToChat: 未配置 chat_id');
+  }
+  const res = await requestAPI(
+    'POST',
+    '/im/v1/messages?receive_id_type=chat_id',
+    {
+      receive_id: chatId,
+      msg_type: 'interactive',
+      content: JSON.stringify(card),
+    }
+  );
+
+  if (res.code !== 0) {
+    throw new Error(`发送群卡片失败: ${res.msg} (code: ${res.code})`);
+  }
+
+  return res.data;
+}
+
+// 负责人群整合卡（2026-09-22）：每日播报时把「逾期 + 临期」跨播报群汇总再播一遍，
+// 卡头 @ 指定负责人。只含逾期/临期两栏（weekly 概览、工单分栏、语录不上此卡，
+// 负责人群看的是升级事项而非全量日报）；各项目行仍按 owner 字段 @ 责任人。
+function buildLeaderDDLReportCard(overdueProjects, urgentProjects, leader = {}) {
+  const mentionTag = leader.mentionOpenId ? buildAtTag(leader.mentionOpenId, leader.mentionName) : '';
+  const elements = [];
+
+  let head = `**📢 全组 DDL 逾期/临期汇总**（整合自各播报群）\n${new Date().toLocaleDateString('zh-CN')}`;
+  if (mentionTag) {
+    head += `\n${mentionTag} 请关注以下项目进展：`;
+  }
+  elements.push({ tag: 'markdown', content: head });
+  elements.push({ tag: 'hr' });
+
+  const overdueCount = countQualifiedNodes(overdueProjects);
+  if (overdueCount > 0) {
+    elements.push({ tag: 'markdown', content: `**🔴 已逾期项目（${overdueCount}个）**` });
+    overdueProjects.forEach((root, index) => {
+      const lines = renderTreeNode(root, 'owner', 'overdue', [], index === overdueProjects.length - 1);
+      elements.push({ tag: 'markdown', content: lines.join('\n') });
+    });
+    elements.push({ tag: 'hr' });
+  }
+
+  const urgentCount = countQualifiedNodes(urgentProjects);
+  if (urgentCount > 0) {
+    elements.push({ tag: 'markdown', content: `**🟠 ${config.ddl.alertDays}天内到期（${urgentCount}个）**` });
+    urgentProjects.forEach((root, index) => {
+      const lines = renderTreeNode(root, 'owner', 'urgent', [], index === urgentProjects.length - 1);
+      elements.push({ tag: 'markdown', content: lines.join('\n') });
+    });
+  }
+
+  return {
+    config: { wide_screen_mode: true, enable_forward: true },
+    elements,
+    header: {
+      template: overdueCount > 0 ? 'red' : 'orange',
+      title: { content: '🚨 DDL逾期/临期汇总 · 负责人群', tag: 'plain_text' },
+    },
+  };
+}
+
+// 负责人群整合播报：webhook 优先（与各播报群同款），未配 webhook 时用 chat_id 走 im API
+async function sendLeaderDDLReport(overdueProjects, urgentProjects, leader = {}) {
+  const card = buildLeaderDDLReportCard(overdueProjects, urgentProjects, leader);
+  if (leader.webhookUrl) {
+    return sendMessage(card, leader.webhookUrl);
+  }
+  return sendCardToChat(leader.chatId, card);
+}
+
 // 解析文本中的 @ 标签，转换为富文本元素数组
 function parseTextWithAtTags(text) {
   const elements = [];
@@ -495,6 +569,9 @@ module.exports = {
   sendMessage,
   buildDDLReportCard,
   sendDDLReport,
+  buildLeaderDDLReportCard,
+  sendLeaderDDLReport,
+  sendCardToChat,
   getRandomQuote,
   sendTextToChat,
   sendTextToUser,

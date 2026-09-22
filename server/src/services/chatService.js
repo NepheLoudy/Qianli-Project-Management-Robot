@@ -399,9 +399,21 @@ async function handleStatusCommand() {
       const chatStatus = g.chatId ? '✅ 群ID已配置' : '⚠️ 群ID未配置';
       return `   ${g.label}：${webhookStatus}，${chatStatus}`;
     }),
+    buildLeaderGroupStatusLine(),
   ];
-  
+
   return lines.join('\n');
+}
+
+// /status 的负责人群整合播报行：未配置显示关闭状态，便于远程确认功能是否生效
+function buildLeaderGroupStatusLine() {
+  const l = config.ddl.leaderGroup;
+  if (!l.webhookUrl && !l.chatId) {
+    return `   ${l.label}：⚪ 整合播报未配置（LEADER_WEBHOOK_URL / LEADER_CHAT_ID 均为空）`;
+  }
+  const target = l.webhookUrl ? '✅ webhook已配置' : '✅ chat_id通道（im API）';
+  const mention = l.mentionOpenId ? `✅ @${l.mentionName}` : '⚠️ 未配置@对象';
+  return `   ${l.label}（整合播报）：${target}，${mention}`;
 }
 
 async function handleTestDDLCommand(args, chatCtx, chatType) {

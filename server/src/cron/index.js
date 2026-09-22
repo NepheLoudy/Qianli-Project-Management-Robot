@@ -2,7 +2,7 @@ const cron = require('node-cron');
 const fs = require('fs');
 const path = require('path');
 const projectService = require('../services/projectService');
-const { sendDDLReport, getRandomQuote } = require('../feishu/bot');
+const { sendDDLReport, sendLeaderDDLReport, getRandomQuote } = require('../feishu/bot');
 const ddlConfirmService = require('../services/ddlConfirmService');
 const ticketCloseService = require('../services/ticketCloseService');
 const config = require('../config');
@@ -88,6 +88,8 @@ async function runDDLBroadcast() {
   let lastError = null;
   // 已成功发送的群（跨重试持久）：重试只补发失败的群，避免已发过的群收到重复卡片
   const deliveredGroups = new Set();
+  // 负责人群整合卡是否已送达（跨重试持久，语义同 deliveredGroups）
+  let leaderDelivered = false;
 
   while (attempt < RETRY_CONFIG.maxAttempts) {
     attempt++;
@@ -169,6 +171,33 @@ async function runDDLBroadcast() {
 
       if (broadcastTargets.length === 0) {
         console.warn('[DDL播报] 未配置任何播报群 webhook，跳过群播报');
+      }
+
+      // 负责人群整合播报（2026-09-22）：把「逾期 + 临期（alertDays 内）」跨播报群汇总
+      // 再播一遍，卡头 @ 指定负责人。filter='all' 不按人员字段过滤（即各群播报内容并集）；
+      // 两栏全空时跳过——负责人群只收升级事项，不重复每日空报告。
+      // 与各群同一轮重试：群卡已送达的不受影响（deliveredGroups/leaderDelivered 各自去重）
+      const leader = config.ddl.leaderGroup;
+      if (leader && (leader.webhookUrl || leader.chatId) && !leaderDelivered) {
+        const duplicatedWithGroup = (leader.webhookUrl && seenWebhooks.has(leader.webhookUrl))
+          || (leader.chatId && seenChatIds.has(leader.chatId));
+        if (duplicatedWithGroup) {
+          console.warn(`[DDL播报] ${leader.label} 的 webhook/群聊ID 与播报群重复，跳过整合播报`);
+          leaderDelivered = true; // 视为已覆盖，重试不再反复告警
+        } else {
+          const leaderData = await projectService.getDDLForBroadcastWithHierarchy('all', allProjects);
+          const leaderOverdue = countQualified(leaderData.overdue);
+          const leaderUrgent = countQualified(leaderData.urgent);
+          if (leaderOverdue === 0 && leaderUrgent === 0) {
+            console.log(`[DDL播报] ${leader.label}：无逾期/临期项目，跳过整合播报`);
+          } else {
+            await sendLeaderDDLReport(leaderData.overdue, leaderData.urgent, leader);
+            leaderDelivered = true;
+            deliveredGroups.add(`leader:${leader.webhookUrl || leader.chatId}`);
+            groupStats.push({ label: leader.label, overdue: leaderOverdue, urgent: leaderUrgent, week: 0 });
+            console.log(`[DDL播报] ${leader.label} 整合播报完成 - 逾期:${leaderOverdue} 临期:${leaderUrgent}`);
+          }
+        }
       }
 
       // 今日标记：至少一群送达后才落盘。不能提前标记——提前落盘后当天发送全败

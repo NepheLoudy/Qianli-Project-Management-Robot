@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v105**（2026-09-21，随本提交落地）。
+当前最新：**v106**（2026-09-22，随本提交落地）。v105（8b743af）因用户离站部署挂起，随 v106 一并上线。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -687,3 +687,19 @@
 - 实现：`chatService` 新增 `probeFleetHealth`/`fleetHealthLines`——对部署目标本机 7 服务（3010/3000/3001/3002/3003/3006/3007）并发 health 探测（3s 超时），逐行 ✅/❌（僵死显示「无响应」）；网关附深度行（ws running/异常 + 投递 ok/failed 计数，详情读取失败降级 ⚠️ 不抛错）。`/status` 输出在该段落拼入。入口=既有运维指令 `/status`（p2p 管理员白名单 `P2P_COMMAND_OPEN_IDS`，群聊仍可用）。
 - 测试：新增 `stub-test-status-fleet.js`（劫持 global fetch，8 断言：7 服务逐行、单服务僵死、ws 异常形态、详情降级）；五套桩全过。
 - 文档：README 指令清单补 /status 新口径。配套：桌面版《机器人总成使用指南.html》同日重建（成员向），FAQ 提及管理员 /status。
+
+## v106 · 2026-09-22 · 随本提交落地 · feat
+
+**DDL 播报新增负责人群整合播报——逾期+临期跨群汇总再播一遍，卡头 @章子赫（用户需求）**
+
+- 需求：项目 DDL 播报时，把逾期和将要逾期的在负责人群再播报一遍，整合所有播报群的口径，并 @章子赫（要求先核实其 open_id 保障 @ 有效）。
+- **@ 有效性核验**：`ou_e4f36d2152270436b25703f14ede86f0` 经通讯录接口直接核验（`GET /contact/v3/users/:open_id` 返回姓名=章子赫、在职激活、未离队），与 duty-bot 名册一致；负责人群（oc_3d6a26f6…）经 `GET /im/v1/chats` 确认机器人在群。上线前已真发一张明确标注的测试卡到负责人群 webhook（code 0），卡片 @ 语法 `<at id="ou_xxx">` 与现网各群 owner @ 同款。
+- 实现（`server/src/config.js` + `feishu/bot.js` + `cron/index.js`）：
+  - config 新增 `ddl.leaderGroup`（`LEADER_WEBHOOK_URL` 优先 / `LEADER_CHAT_ID` 走 im API 发卡兜底 / `LEADER_MENTION_OPEN_ID`+`LEADER_MENTION_NAME` 卡头 @ 对象；两者都空=功能关闭）；群 id/open_id 只存 .env 不进仓库（同审批群先例）。
+  - bot 新增 `buildLeaderDDLReportCard`/`sendLeaderDDLReport`/`sendCardToChat`：整合卡只含「🔴 已逾期 + 🟠 N 天内到期」两栏，整合口径= `getDDLForBroadcastWithHierarchy('all')`（不按人员字段过滤，即各播报群内容并集，仅 dkyj 等单字段项目也入卡）；各项目行仍按 owner 字段 @ 责任人，无主项目回退「未指派」纯文本不丢行；周概览/工单分栏/语录不上此卡；有逾期红头、仅临期橙头。
+  - cron 主流程在各群常规卡之后追加负责人群步骤：与各群同一轮重试（`leaderDelivered` 跨重试去重，瞬时网络/限频错误同待遇）；目标 webhook/chat_id 与播报群重复时自动跳过防双卡；**两栏全空当日不发送**（负责人群只收升级事项）；负责人群失败则本轮按失败处理（当日标记不落盘，可整轮重跑）——播报丢失事故（v99/v103）的教训方向是宁可重跑不可静默丢。
+  - 静默闸门：负责人群卡在 `runDDLBroadcast` 内，天然随 `gateTask('ddl_broadcast')` 整任务重跑（挤压冲刷以补发时刻数据重查），无新增闸门点。
+- 配套：`/api/hub/policy` 定制窗口补 `ddl.leaderGroup` 全景（webhook 等同凭据只出 hasWebhook 布尔，同 broadcastGroups 口径）；`/status` 播报群段补负责人群行（未配置显示关闭态）；push.js 测试闸门补齐全量六套桩（v104/v105 两套此前漏挂，一并入闸）。
+- 测试：新增 `stub-test-ddl-leader.js`（30 断言：卡头 @ 标签、跨字段并集整合口径、周概览/工单/语录不上卡、分栏计数、无主项目回退、红/橙头、主流程发送一次、全空跳过、目标重复跳过、业务性失败当日标记不落盘且群卡不重发）；六套桩全过。
+- 文档：README §2 播报节改「4 群分组 + 负责人群整合」、环境变量样例与晚间静默节同步；`server/.env.example` 补 `LEADER_*` 键说明。
+- 部署备注：本版随 v105（/status 舰队快照，8b743af，因用户离站挂起）一并上线。

@@ -12,16 +12,17 @@
 - 状态：pending（意外暂停）/ in_progress（进行中）/ waiting（待认领）/ completed（已完成）/ died（已截止）
 - DDL 倒计时显示，临近 DDL 高亮提醒
 
-### 2. 群机器人 DDL 播报（4 群分组）
+### 2. 群机器人 DDL 播报（4 群分组 + 负责人群整合）
 - 每天 12:05 自动播报 DDL 情况（2026-09-19 起，与 duty-bot 12:00 值日播报错峰防 bitable 限频）
 - **4 个播报群对应 4 个人员字段**：owner 群 / dkyj 组 / sj 组 / xy 组
 - 每个群只播报「对应人员字段有人的项目」，避免重复通知
+- **负责人群整合播报（2026-09-22 起）**：各群播报后，把**逾期 + 临期（`DDL_ALERT_DAYS` 内）**跨播报群汇总（各人员字段并集，不分群口径）再在负责人群播一遍，卡头 **@ 指定负责人**（`LEADER_MENTION_OPEN_ID/MENTION_NAME`，现=章子赫，open_id 已过通讯录核验）；只含逾期/临期两栏（周概览/工单分栏/语录不上此卡），两栏全空当日不发送；与各群同轮重试去重，目标与播报群重复时自动跳过
 - **父项目负责人归并**（v62）：父项目负责人是总负责人，播报时其各人员字段的成员视为名下**所有子项目**也有他——子项目自身负责人维持原有逻辑（自身成员优先），父项目成员沿父子链归并进子项目后按人去重；归并只作用于播报归属与卡片 @，不改写看板数据
 - 仅播报 `in_progress` 和 `waiting` 状态的项目
 - 已逾期项目提醒、2 天内到期项目 @负责人提醒、本周到期项目概览
 - 支持父子层级结构，按层级依序完整播报，子记录自动缩进
 - 同一 webhook / 群聊 ID 自动去重，防止同一群收到多张播报卡
-- 支持 `/test-ddl` 手动测试播报
+- 支持 `/test-ddl` 手动测试播报（测试卡只发对应播报群，**不含负责人群整合卡**；整轮重跑走 `POST /api/bot/test-broadcast`（运维台按钮，受「今日已播报」标记限制）——负责人群卡只随整轮播报/静默补跑发送）
 
 ### 3. 维护日志
 - 版本更新记录管理
@@ -147,7 +148,7 @@ project-management-robot/
 │   │   │   └── index.js             # 定时任务
 │   │   ├── utils/
 │   │   │   └── quietHours.js        # 晚间静默闸门（播报积压补跑）
-│   │   ├── config.js                # 配置（4 群播报）
+│   │   ├── config.js                # 配置（4 群播报 + 负责人群整合播报）
 │   │   └── index.js                 # 入口
 │   ├── package.json
 │   └── .env.example
@@ -218,7 +219,7 @@ project-management-robot/
 
 工单分栏只列处理人名字不 @（临近结单的私聊提醒与无人接单的问询/组长升级由 ticket-bot 负责）。相关配置见 `server/.env.example` 的 `TICKET_*` 项，字段/节点值改动需与 ticket-bot 侧同步。
 
-**晚间静默（播报时段限制）**：每日 DDL 播报（含逾期确认私聊）触发落在 02:00–09:00（Asia/Shanghai，`QUIET_HOURS_START/END` 可配、`QUIET_HOURS_DISABLED=1` 关闭）内时不直接执行，积压到 09:00 整点以补发时刻数据重跑；`/test-ddl`、`/test-broadcast` 等人工触发与对话/指令回复不受限。实现见 `server/src/utils/quietHours.js`。
+**晚间静默（播报时段限制）**：每日 DDL 播报（含负责人群整合播报与逾期确认私聊）触发落在 02:00–09:00（Asia/Shanghai，`QUIET_HOURS_START/END` 可配、`QUIET_HOURS_DISABLED=1` 关闭）内时不直接执行，积压到 09:00 整点以补发时刻数据重跑；`/test-ddl`、`/test-broadcast` 等人工触发与对话/指令回复不受限。实现见 `server/src/utils/quietHours.js`。
 
 **表2：维护日志（表ID: tbl_log）**
 
@@ -290,6 +291,12 @@ SJ_CHAT_ID=sj组群聊ID
 
 XY_WEBHOOK_URL=xy组机器人webhook
 XY_CHAT_ID=xy组群聊ID
+
+# === 负责人群整合播报（2026-09-22 起；两者都空 = 功能关闭）===
+LEADER_WEBHOOK_URL=负责人群机器人webhook（优先）
+LEADER_CHAT_ID=负责人群群聊ID（webhook 为空时走 im API 发卡）
+LEADER_MENTION_OPEN_ID=卡头@对象open_id（如章子赫）
+LEADER_MENTION_NAME=卡头@对象名字
 
 # 关键词监听群聊 ID（该群的全部发言会被记录）
 KEYWORD_CHAT_ID=

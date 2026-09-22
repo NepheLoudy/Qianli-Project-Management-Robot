@@ -27,10 +27,18 @@ function runTestGate() {
     return true;
   }
   const { spawnSync } = require('child_process');
-  const cmd = 'node server/scripts/stub-test-duty-branch.js && node server/scripts/stub-test-ddl-zombie.js && node server/scripts/stub-test-ddl-retry.js';
-  if (!cmd) { console.log('[测试闸门] 无测试命令，跳过'); return true; }
-  console.log('[测试闸门] 运行:', cmd);
-  const r = spawnSync(cmd, { shell: true, stdio: 'inherit', cwd: __dirname });
+  // 全量桩闸门（2026-09-22 起）：六套桩全过才部署（此前 v104/v105 的两套漏挂，一并补入）
+  const suites = [
+    'stub-test-duty-branch.js',
+    'stub-test-ddl-zombie.js',
+    'stub-test-ddl-retry.js',
+    'stub-test-ddl-confirm-targeted.js',
+    'stub-test-status-fleet.js',
+    'stub-test-ddl-leader.js',
+  ].map(f => `node server/scripts/${f}`).join(' && ');
+  if (!suites) { console.log('[测试闸门] 无测试命令，跳过'); return true; }
+  console.log('[测试闸门] 运行:', suites);
+  const r = spawnSync(suites, { shell: true, stdio: 'inherit', cwd: __dirname });
   if (r.status !== 0) {
     console.error('部署前测试未通过（SKIP_TESTS=1 可跳过），中止部署');
     return false;
