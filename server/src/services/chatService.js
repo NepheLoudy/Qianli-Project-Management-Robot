@@ -226,14 +226,14 @@ async function handleDutyBranch(message, { isGroup, text, senderId }) {
     const lotteryDraw = lotteryService.drawForCommand(text, message.chat_id);
     if (lotteryDraw) {
       console.log('[对话服务] 值日群抽奖指令:', lotteryDraw.keywords.join('/'));
-      usageReport.report(senderId, '抽奖');
+      usageReport.report(senderId, '抽奖', { fun: true, learn: lotteryDraw.keywords });
       return { handled: true, reply: lotteryDraw.text };
     }
     // 关键词回答与其它群完全一致（2026-09-13 口径：未@/@关键词回答全群统一，不再有放行开关）
     const autoHit = autoReplyService.buildMentionReplyForText(text);
     if (autoHit) {
       console.log('[对话服务] 值日群关键词自动回复命中:', autoHit.keywords.join('/'), `(表: ${autoHit.source})`);
-      usageReport.report(senderId, '关键词回答');
+      usageReport.report(senderId, '关键词回答', { fun: true });
       return { handled: true, reply: autoHit.text };
     }
     if (enforce.closeBasicCommands !== false) {
@@ -728,7 +728,7 @@ async function processChatMessage(event) {
         const lotteryDraw = lotteryService.drawForCommand(cmd.command, message.chat_id);
         if (lotteryDraw) {
           console.log('[对话服务] 抽奖指令命中:', lotteryDraw.keywords.join('/'));
-          usageReport.report(senderId, '抽奖');
+          usageReport.report(senderId, '抽奖', { fun: true, learn: lotteryDraw.keywords });
           replyText = lotteryDraw.text;
         } else if (cmd.command.startsWith('/print-')) {
           replyText = await handlePrintCommand(cmd.command, cmd.args);

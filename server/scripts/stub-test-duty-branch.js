@@ -17,7 +17,18 @@ const path = require('path');
 process.env.DUTY_CHAT_ID = 'oc_duty_group_test';
 process.env.DUTY_SERVICE_URL = 'http://127.0.0.1:39006';
 
-const captured = { dutyPayloads: [], botReplies: [] };
+const captured = { dutyPayloads: [], botReplies: [], usageReports: [] };
+
+// 捕获统计归因上报（usageReport 走全局 fetch 到网关 :3010，测试离线）：
+// 断言 2026-09-22 活跃口径修正——娱乐功能上报带 fun 标记、抽奖带 learn 触发词
+const realFetch = global.fetch;
+global.fetch = (url, opts = {}) => {
+  if (String(url).includes('/api/usage/report')) {
+    try { captured.usageReports.push(JSON.parse(opts.body || '{}')); } catch (err) { /* 忽略 */ }
+    return Promise.resolve({ ok: true, json: async () => ({ ok: true }) });
+  }
+  return realFetch(url, opts);
+};
 
 // 占位 duty 服务（:39006）：管辖策略下发 + 指令载荷记录。
 // policyState.payload：null → 下发 defaultPolicy()；'FAIL' → 模拟 duty-bot 不可用；对象 → 原样下发
@@ -330,6 +341,12 @@ function unAtEvent(text, msgId, chatId = 'oc_duty_group_test') {
   await chatService.processChatMessage(groupEvent('/help', 'mL5h', 'oc_normal_group'));
   check('/help：含抽奖动态指令段', captured.botReplies.some((r) => r.messageId === 'mL5h' && r.text.includes('/开抽测试') && r.text.includes('抽一次奖')));
   check('/help：不再展示运维指令（/status /test-ddl /keywords /autoreply /history）', captured.botReplies.some((r) => r.messageId === 'mL5h' && !r.text.includes('/test-ddl') && !r.text.includes('/autoreply') && !r.text.includes('/keywords') && !r.text.includes('/history') && !r.text.includes('/status')));
+
+  // 统计归因上报（2026-09-22 活跃口径修正）：娱乐功能（抽奖/关键词回答）必须带 fun 标记，
+  // 抽奖另带 learn 触发词数组（网关据此把 '/触发词' 路由记录学进娱乐清单，不计入队员活跃）
+  check('统计上报：抽奖/关键词回答全部带 fun 标记', captured.usageReports.length > 0 && captured.usageReports.every((r) => (r.feature !== '抽奖' && r.feature !== '关键词回答') || r.fun === 1), JSON.stringify(captured.usageReports));
+  check('统计上报：抽奖带 learn 触发词', captured.usageReports.some((r) => r.feature === '抽奖' && Array.isArray(r.learn) && r.learn.includes('开抽测试')), JSON.stringify(captured.usageReports));
+  check('统计上报：关键词回答带 fun 标记', captured.usageReports.some((r) => r.feature === '关键词回答' && r.fun === 1), JSON.stringify(captured.usageReports));
 
   // 启停：停用后指令不命中（落未知指令提示），恢复后照常
   lotteryService.setEnabled(false);

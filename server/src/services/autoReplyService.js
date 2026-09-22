@@ -281,7 +281,7 @@ async function processMessageEvent(event) {
     return { matched: false, reason: '未命中关键词' };
   }
   const reporterOpenId = (event.sender && event.sender.sender_id && (event.sender.sender_id.open_id || event.sender.sender_id.user_id)) || '';
-  usageReport.report(reporterOpenId, '关键词回答');
+  usageReport.report(reporterOpenId, '关键词回答', { fun: true });
 
   try {
     try {
