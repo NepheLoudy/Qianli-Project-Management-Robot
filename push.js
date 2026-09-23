@@ -27,7 +27,7 @@ function runTestGate() {
     return true;
   }
   const { spawnSync } = require('child_process');
-  // 全量桩闸门（2026-09-22 起）：六套桩全过才部署（此前 v104/v105 的两套漏挂，一并补入）
+  // 全量桩闸门（2026-09-22 起）：七套桩全过才部署（2026-09-24 起 workload 负载聚合入闸）
   const suites = [
     'stub-test-duty-branch.js',
     'stub-test-ddl-zombie.js',
@@ -35,6 +35,7 @@ function runTestGate() {
     'stub-test-ddl-confirm-targeted.js',
     'stub-test-status-fleet.js',
     'stub-test-ddl-leader.js',
+    'stub-test-workload.js',
   ].map(f => `node server/scripts/${f}`).join(' && ');
   if (!suites) { console.log('[测试闸门] 无测试命令，跳过'); return true; }
   console.log('[测试闸门] 运行:', suites);

@@ -377,6 +377,7 @@ async function getDDLForBroadcastWithHierarchy(filter = 'all', preloadedProjects
 module.exports = {
   getProjects,
   getProjectsWithHierarchy,
+  buildEffMembers,
   createProject,
   updateProject,
   deleteProject,

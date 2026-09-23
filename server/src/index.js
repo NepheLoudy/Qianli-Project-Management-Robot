@@ -9,6 +9,7 @@ const keywordService = require('./services/keywordService');
 const autoReplyService = require('./services/autoReplyService');
 const lotteryService = require('./services/lotteryService');
 const ddlConfirmService = require('./services/ddlConfirmService');
+const workloadService = require('./services/workloadService');
 const { requireApiToken } = require('./auth');
 const { startEventSubscription, handleMessageEvent } = require('./feishu/eventSubscription');
 
@@ -179,6 +180,18 @@ app.get('/api/hub/policy', (req, res) => {
       },
     },
   });
+});
+
+// 团队负载全景（工单+项目双源聚合评分）：本地运维台「团队负载」看板数据源。
+// ticket-bot 不可用时降级为仅项目侧（返回内 ticketsSource='unavailable'），不 500
+app.get('/api/hub/workload', async (req, res) => {
+  try {
+    const result = await workloadService.getTeamWorkload();
+    res.json(result);
+  } catch (err) {
+    console.error('[API] 团队负载聚合失败:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get('/api/keywords/config', (req, res) => {

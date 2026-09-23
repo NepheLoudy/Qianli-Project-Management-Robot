@@ -402,6 +402,7 @@ node push.js "提交说明"
 | `/api/bot/test-broadcast` | POST | 测试 DDL 播报（今日已播报过时返回 `skipped:true` 不重复发送） |
 | `/api/bot/history` | GET | 获取播报历史 |
 | `/api/bot/cron-status` | GET | 定时任务状态 |
+| `/api/hub/workload` | GET | 团队负载全景（工单+项目双源评分聚合，2026-09-24；本地运维台「团队负载」看板数据源）。聚合本项目项目表全量（effMembers 父负责人归并）+ ticket-bot `/api/tickets/workload-by-person`（10s 超时，失败降级仅项目侧并标 `ticketsSource:'unavailable'`）。评分=状态折减(in_progress 1.0/waiting 0.6/pending 0.3)×DDL 时效(消耗比分档,逾期递增封顶 2.7)×重要性(项目 priority/工单分桶代理)×角色(owner 1.3)，多人单按 shareCount 摊薄；unclaimed 不计个人分、归组别待接。权重随 `weights` 字段透出可核对 |
 
 ### 关键词/发言记录
 | 接口 | 方法 | 说明 |
@@ -438,6 +439,7 @@ node push.js "提交说明"
 ### 测试
 ```bash
 node server/scripts/stub-test-duty-branch.js   # 值日分支 + 关键词回答 + 抽奖链路 stub 测试（不触飞书；含统计归因上报断言：抽奖/关键词回答带 fun 标记、抽奖带 learn 触发词——2026-09-22 活跃口径修正，娱乐功能不计入队员活跃）
+node server/scripts/stub-test-workload.js      # 团队负载聚合 stub 测试（时效系数边界/状态折减/owner 加权/多人摊薄/父负责人归并/ticket-bot 拉取降级——2026-09-24）
 ```
 `npm run push` 部署前自动跑（测试不过不部署，`SKIP_TESTS=1` 可跳过）；新增行为须带新断言。
 

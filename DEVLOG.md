@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v108**（2026-09-24，随本提交落地）。上一版 v107（5b80e39，正经活跃口径批）。上一版 v106（`211ce96`，负责人群整合播报）；v105（8b743af）曾因用户离站部署挂起，已随 v106 一并上线。
+当前最新：**v109**（2026-09-24，随本提交落地）。上一版 v108（event fail-closed + 普通@关键词 usage 上报收口）。更早：v107（正经活跃口径批，`5b80e39`）、v106（负责人群整合播报，`211ce96`）。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -722,3 +722,13 @@
 - **usage 上报收口**：普通群 @机器人 命中回答表（chatService 非值日群分支）此前漏报，补 usageReport.report(senderId, 关键词回答, fun:true)——与值日群分支 / 未@路径 / autoReplyService 三处对齐，v107 口径全覆盖。
 - 随本提交入库：README「等回执待结单」分栏补行（v75 文档欠账，09-23 遗留批）。
 - 测试：六套桩全过（duty-branch / ddl-zombie / ddl-retry / ddl-confirm-targeted / status-fleet / ddl-leader）。
+
+## v109 · 2026-09-24 · 随本提交落地 · feat
+
+**新增 /api/hub/workload 团队负载聚合（工单+项目双源评分，运维台「团队负载」看板数据源）**
+
+- 提交说明：feat: 新增团队负载聚合端点（workloadService 双源评分）
+- **新建 `server/src/services/workloadService.js`**：聚合本项目项目表全量（`buildEffMembers` 父项目负责人归并，`projectService` 顺带导出该函数）+ ticket-bot 新端点 `/api/tickets/workload-by-person`（v82，open_id 对齐；10s 超时照 ticketCloseService 模式，失败降级仅项目侧并在返回标 `ticketsSource:'unavailable'`，不 500）。
+- **评分=复核算法（非计数）**：单任务分 = 状态折减(in_progress 1.0/waiting 0.6/pending 0.3，completed/died 不计) × DDL 时效(时间消耗比 p=已耗÷(发起→DDL全窗)：≤0.5→0.8/≤0.8→1.0/≤1→1.3/逾期 1.3+min(天,14)×0.1 封顶 2.7/无DDL 0.5；工单无DDL按滞留 <24h 0.8/<72h 1.0/≥72h 1.2) × 重要性(项目 priority high1.5/medium1.0/low0.7；工单无优先级字段以分桶代理 urgent1.5/week1.0/waiting0.8) × 角色(项目 owner 1.3)；**多人协作工单按 shareCount 摊薄**；unclaimed 无人接单不计个人分、按面向组别归入组切面待接。输出：persons（按分降序，含项目/工单明细）/groups（均值/峰值/待接数）/unclaimedTop/orphanTickets/summary，权重随 `weights` 透出可核对。
+- 计算核心 `computeWorkload(projects, ticketData, nowMs)` 为纯函数（无 IO），stub 直测。
+- 测试：`server/scripts/stub-test-workload.js` 31 断言（时效系数边界 13 项/双源聚合与权重/父归并/摊薄/降级路径），**入 push.js 部署闸门（七套桩）**；全套全过。README（API 行+测试节）同步；registry.js 登记 windows 条目（随顶层仓）。
