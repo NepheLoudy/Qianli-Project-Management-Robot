@@ -746,6 +746,7 @@ async function processChatMessage(event) {
 
     if (autoHit) {
       console.log('[对话服务] 关键词自动回复命中:', autoHit.keywords.join('/'), `(表: ${autoHit.source})`);
+      usageReport.report(senderId, '关键词回答', { fun: true }); // 普通群 @ 命中此前漏报（2026-09-24 复查批补齐）
       replyText = autoHit.text;
     } else if (!isGroup && autoReplyService.hasKeywordHitForText(text)) {
       console.log('[对话服务] 私聊命中关键词，提示仅面向群聊');

@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v107**（2026-09-22，随本提交落地）。上一版 v106（`211ce96`，负责人群整合播报）；v105（8b743af）曾因用户离站部署挂起，已随 v106 一并上线。
+当前最新：**v108**（2026-09-24，随本提交落地）。上一版 v107（5b80e39，正经活跃口径批）。上一版 v106（`211ce96`，负责人群整合播报）；v105（8b743af）曾因用户离站部署挂起，已随 v106 一并上线。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -712,3 +712,13 @@
 - 四处调用点同步：抽奖两处（chatService 值日群分支/普通群指令分支）带 `{ fun: true, learn: lotteryDraw.keywords }`；关键词回答两处（chatService 值日群分支/autoReplyService）带 `{ fun: true }`。DDL 确认为正经使用，上报不变。
 - 测试：`stub-test-duty-branch.js` 新增全局 fetch 捕获与统计上报三断言（抽奖/关键词回答全带 fun 标记、抽奖带 learn 触发词、关键词回答 fun 标记）；六套桩全过。
 - 规则成文：顶层 AGENTS 全局工程规则新增「队员活跃口径=正经使用（2026-09-22）」条（实现约定与静态清单位置都在该条）。
+
+### v108 · 2026-09-24 · 随本提交落地 · fix
+
+**事件端点 fail-closed + 普通群 @关键词命中补 usage 上报（全仓复查批）**
+
+- 提交说明：fix: /api/feishu/event 未配置 verificationToken 时 fail-closed + 普通群@关键词命中补 usage 上报
+- **fail-closed**：server/src/index.js 的 /api/feishu/event 原为 fail-open（token 未配置即整段跳过校验，LAN 可伪造消息帧直达对话管道、伪造 owner 私聊写项目状态）。照 ticket-bot v78 口径补「未配置 FEISHU_VERIFICATION_TOKEN 一律 403 拒绝 im.message.receive_v1 帧」；url_verification 握手不受影响。现网 .env 已配 token，行为无实际变化。
+- **usage 上报收口**：普通群 @机器人 命中回答表（chatService 非值日群分支）此前漏报，补 usageReport.report(senderId, 关键词回答, fun:true)——与值日群分支 / 未@路径 / autoReplyService 三处对齐，v107 口径全覆盖。
+- 随本提交入库：README「等回执待结单」分栏补行（v75 文档欠账，09-23 遗留批）。
+- 测试：六套桩全过（duty-branch / ddl-zombie / ddl-retry / ddl-confirm-targeted / status-fleet / ddl-leader）。
