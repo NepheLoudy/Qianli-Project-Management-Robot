@@ -169,12 +169,17 @@ async function maybeForwardExpressObserve(event) {
 async function handleDutyBranch(message, { isGroup, text, senderId }) {
   const policy = await dutyPolicy.getDutyPolicy();
 
-  // ① p2p 图片：值日照片凭证直传
+  // ① p2p 图片/文件：值日照片凭证直传 duty + 发票采集观察转 approval（fire-and-forget，
+  //    非发票图 approval-bot 按特征词静默忽略，两条线互不干扰）
   if (!isGroup) {
     const msgType = message.message_type || message.msg_type;
     if (msgType === 'image') {
       const imageKeys = keywordService.extractImageKeys(message);
       if (imageKeys.length > 0) {
+        forwardInvoiceCollect(message, senderId, {
+          msgType: 'image',
+          items: imageKeys.map(k => ({ fileKey: k })),
+        });
         const { reply } = await handleDutyForward({
           type: 'image', openId: senderId, imageKey: imageKeys[0],
           imageKeys, // 富文本一次多图全量透传（2026-09-17，duty 逐张收录）
@@ -183,6 +188,17 @@ async function handleDutyBranch(message, { isGroup, text, senderId }) {
         return { handled: true, reply };
       }
       return { handled: false, reply: '' };
+    }
+    if (msgType === 'file') {
+      // p2p 文件（数电票 PDF 等）：无 duty 场景，仅发票采集观察；回执由 approval-bot 私聊发
+      const content = extractFileContent(message);
+      if (content.file_key) {
+        forwardInvoiceCollect(message, senderId, {
+          msgType: 'file',
+          items: [{ fileKey: content.file_key, fileName: content.file_name || '' }],
+        });
+        return { handled: true, reply: '' };
+      }
     }
   }
 
@@ -297,6 +313,48 @@ async function handleApprovalCommand(command, args) {
   }
 }
 
+/**
+ * p2p 文件消息 content 提取（{"file_key","file_name"}；image 用 keywordService.extractImageKeys）
+ */
+function extractFileContent(message) {
+  try {
+    const content = typeof message.body?.content === 'string'
+      ? JSON.parse(message.body.content)
+      : message.body?.content;
+    return content || {};
+  } catch (err) {
+    return {};
+  }
+}
+
+/**
+ * 发票采集观察转发（2026-09-25）：p2p 图片/文件 → approval-bot /api/invoice/collect。
+ * fire-and-forget：识别+回执由 approval-bot 私聊完成，hub 不等结果也不回复；
+ * 非发票图（表情包/值日照片等）approval-bot 按特征词静默忽略，不会误打回。
+ * 写端点带 X-API-Token（全局共享值，usageReport 同源）。
+ */
+function forwardInvoiceCollect(message, senderId, { msgType, items }) {
+  const serviceUrl = config.approval.serviceUrl;
+  for (const item of items) {
+    fetch(`${serviceUrl}/api/invoice/collect`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(15000),
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Token': process.env.API_TOKEN || '',
+      },
+      body: JSON.stringify({
+        type: 'invoice_image',
+        openId: senderId,
+        messageId: message.message_id,
+        fileKey: item.fileKey,
+        fileName: item.fileName || '',
+        msgType,
+      }),
+    }).catch((err) => console.warn('[对话服务] 发票采集转发失败:', err.message));
+  }
+}
+
 async function handleHelpCommand() {
   const botName = config.bot.name;
   // 抽奖动态指令段（触发词在 抽奖配置表.xlsx 定义；奖池为空/停用时整段省略）
@@ -308,7 +366,7 @@ async function handleHelpCommand() {
   /lottery   查看抽奖奖池与概率
 ${lotteryHelp ? lotteryHelp + '\n' : ''}
 财务审批指令（审批群内自动切换为 /approval-*，转发 approval-bot）：
-  /approval-help /approval-list /approval-pending /approval-status /approval-urge
+  /approval-help /approval-list /approval-pending /approval-status /approval-urge /approval-batch
 
 3D打印指令（转发 bambu）：
   /print-help     显示打印相关帮助
