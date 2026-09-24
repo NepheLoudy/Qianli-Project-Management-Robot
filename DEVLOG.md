@@ -768,7 +768,7 @@
 - `forwardInvoiceCollect` 超时 15s→60s：采集链路带 OCR 兜底（飞书 basic_recognize）时端到端可超 30s，15s 超时会让 hub 侧日志误报失败（fire-and-forget 不影响用户回执，但监控口径失真）；与 approval-bot 侧 60s 口径对齐。
 - **已知遗留（2026-09-25 全量审查发现，待下批修）**：`extractFileContent` 读 `message.body?.content`，但 hub 事件帧形状是 `message.content`（JSON 字符串，无 `body` 包装）——`message.body` 恒为 undefined，**p2p 文件（数电票 PDF）分支实际是死代码**；图片分支不受影响（走 keywordService.extractImageKeys 读 `message.content`）。修复时改读 `message.content` 并补 file 分支桩断言；同时发票采集作为新成员交互尚无 `POST /api/usage/report` 上报（铁律⑧缺口），可同批补。
 
-## v114 · 2026-09-25 · 随本提交落地 · fix+docs
+## v114 · 2026-09-25 · `4fb1388` · fix+docs
 
 **发票采集文件分支死代码修复（P1）+ 采集 usage 上报（铁律⑧）+ 全量审查文档批**
 
