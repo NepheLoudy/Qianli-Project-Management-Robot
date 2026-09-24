@@ -314,14 +314,16 @@ async function handleApprovalCommand(command, args) {
 }
 
 /**
- * p2p 文件消息 content 提取（{"file_key","file_name"}；image 用 keywordService.extractImageKeys）
+ * p2p 文件消息 content 提取（{"file_key","file_name"}；image 用 keywordService.extractImageKeys）。
+ * 事件帧形状是 message.content（JSON 字符串，网关原样转发）；message.body.content 仅
+ * IM REST 消息 item 形状才有——2026-09-25 全量审查发现本函数只读后者导致文件分支
+ * 永远拿不到 file_key（数电票 PDF 采集静默失效），改为双形状兼容。
  */
 function extractFileContent(message) {
   try {
-    const content = typeof message.body?.content === 'string'
-      ? JSON.parse(message.body.content)
-      : message.body?.content;
-    return content || {};
+    const raw = message.content ?? message.body?.content;
+    if (typeof raw !== 'string') return raw || {};
+    return JSON.parse(raw) || {};
   } catch (err) {
     return {};
   }
@@ -335,6 +337,8 @@ function extractFileContent(message) {
  */
 function forwardInvoiceCollect(message, senderId, { msgType, items }) {
   const serviceUrl = config.approval.serviceUrl;
+  // 队员交互归因（铁律⑧）：交票是新成员交互能力，网关路由层看不见，hub 侧上报
+  usageReport.report(senderId, '发票采集');
   for (const item of items) {
     fetch(`${serviceUrl}/api/invoice/collect`, {
       method: 'POST',

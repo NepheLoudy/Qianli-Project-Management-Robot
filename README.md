@@ -49,6 +49,7 @@
   - `/history` — 查看近期播报历史（运维，不在 /help 展示）
   - `/print-*` — 3D 打印指令转发（bambu）
   - `/approval-*` — 财务指令转发（approval-bot；审批群内指令整体切换为财务）
+- **发票采集观察转发（2026-09-25 起）**：队员**私聊**机器人发发票图片或 PDF/文件，hub 自动 fire-and-forget 转给 approval-bot `POST /api/invoice/collect` 识别入台账（不阻塞消息管线；识别结果/打回/回执均由 approval-bot 私聊回复，hub 不代答）；与值日照片凭证双线并行互不干扰
 - 消息去重机制，防止重复处理
 - 事件由 feishu-gateway（本机唯一长连接）转发到 `/api/feishu/event`，本服务 `FEISHU_USE_LONG_CONNECTION=false`
 
@@ -399,6 +400,8 @@ node push.js "提交说明"
 | 接口 | 方法 | 说明 |
 |------|------|------|
 | `/api/health` | GET | 健康检查 |
+| `/api/ddl/pending` | GET | 当前待确认的 DDL 逾期确认清单（duty-bot 18:30 值日询问的 DDL 冲突提示数据源；失联静默降级） |
+| `/api/hub/policy` | GET | hub 定制窗口：对话/指令/关键词/抽奖/值日分支等生效策略全景（只读） |
 | `/api/bot/test-broadcast` | POST | 测试 DDL 播报（今日已播报过时返回 `skipped:true` 不重复发送） |
 | `/api/bot/history` | GET | 获取播报历史 |
 | `/api/bot/cron-status` | GET | 定时任务状态 |

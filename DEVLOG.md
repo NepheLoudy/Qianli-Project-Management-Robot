@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v111**（2026-09-24，`c06277a`）。上一版 v110（负载算法升级批，`dbc33e8`）。上一版 v109（团队负载聚合端点，`a2fea48`）。更早：v108（event fail-closed + usage 上报收口）、v107（正经活跃口径批，`5b80e39`）。
+当前最新：**v114**（2026-09-25，随本提交落地）。上一版 v113（发票转发超时 60s，`046174e`）。上一版 v112（发票采集观察转发，`4739bd7`）。更早：v111（duty fallback 词形同步，`c06277a`）、v110（负载算法升级批，`dbc33e8`）、v109（团队负载聚合端点，`a2fea48`）、v108（event fail-closed + usage 上报收口）、v107（正经活跃口径批，`5b80e39`）。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -750,3 +750,31 @@
 - dutyPolicyService.buildFallbackPolicy 的 p2pCommands 补 `确认请假`/`取消请假` + 斜杠变体共 4 词——duty-bot v36 请假改两步确认后，其 policy 下发清单已含新词形；本仓仅在 duty-bot 失联兜底时用内置清单，不同步则兜底期间「确认请假」会被当未识别指令拦下。
 - 精确词匹配（cmds.includes(text)），逐字清单故须逐字同步；下发策略正常时本清单不参与匹配。
 - 测试：stub-test-duty-branch.js 全过（该测试自带 stub 清单，不随 fallback 变化）。
+
+## v112 · 2026-09-25 · `4739bd7` · feat
+
+**hub 发票采集观察转发：p2p 图片/文件 fire-and-forget 转 approval-bot（发票全链路 hub 侧入口，对接 approval-bot v45）**
+
+- 提交说明：feat: hub 发票采集观察转发——p2p 图片/文件 fire-and-forget 转 approval-bot /api/invoice/collect(token 头),帮助文案补 /approval-batch
+- `server/src/services/chatService.js` `handleDutyBranch`：p2p 图片 → `forwardInvoiceCollect`（不 await）+ duty 照片凭证直传**双线并行**；p2p 文件 → 仅走发票采集。载荷 `{openId, messageId, fileKey, msgType}`，带 `X-API-Token` 头（复用全局共享 token）；fire-and-forget 不阻塞消息管线，**回执一律由 approval-bot 私聊发送**（hub 不代答，保持「谁的业务谁回话」）。
+- `/help` 帮助文案补 `/approval-batch`（财务报销批次三件套入口，approval-bot v45 新指令）。
+- 设计定位：与快递观察转发同款「观察转发模式」——hub 只搬运不判业务，发票合法性/查重/打回全在 approval-bot 侧。
+
+## v113 · 2026-09-25 · `046174e` · fix
+
+**hub 发票采集转发超时 15s→60s（采集链路可超 30s，approval-bot v46 复查 P2-1 联动修复）**
+
+- 提交说明：fix: hub 发票采集转发超时 15s→60s(采集链路可超 30s,复查 P2-1)
+- `forwardInvoiceCollect` 超时 15s→60s：采集链路带 OCR 兜底（飞书 basic_recognize）时端到端可超 30s，15s 超时会让 hub 侧日志误报失败（fire-and-forget 不影响用户回执，但监控口径失真）；与 approval-bot 侧 60s 口径对齐。
+- **已知遗留（2026-09-25 全量审查发现，待下批修）**：`extractFileContent` 读 `message.body?.content`，但 hub 事件帧形状是 `message.content`（JSON 字符串，无 `body` 包装）——`message.body` 恒为 undefined，**p2p 文件（数电票 PDF）分支实际是死代码**；图片分支不受影响（走 keywordService.extractImageKeys 读 `message.content`）。修复时改读 `message.content` 并补 file 分支桩断言；同时发票采集作为新成员交互尚无 `POST /api/usage/report` 上报（铁律⑧缺口），可同批补。
+
+## v114 · 2026-09-25 · 随本提交落地 · fix+docs
+
+**发票采集文件分支死代码修复（P1）+ 采集 usage 上报（铁律⑧）+ 全量审查文档批**
+
+- 提交说明：fix: extractFileContent 双形状兼容（p2p 文件发票采集死代码修复）+ 发票采集 usage 上报 + 桩断言 + 文档批
+- **P1 修复**：`extractFileContent` 原只读 `message.body?.content`，但 hub 事件帧形状是 `message.content`（网关原样转发的 JSON 字符串，无 body 包装）→ `message.body` 恒 undefined，**p2p 文件（数电票 PDF）的发票采集分支自 v112 上线起就是死代码**（静默失效、无日志）。改为 `message.content ?? message.body?.content` 双形状兼容（body 形态仅 IM REST item 有，保留兜底）。2026-09-25 全量审查发现，v113 条目已预告。
+- **铁律⑧补齐**：`forwardInvoiceCollect` 命中点补 `usageReport.report(openId, '发票采集')`——交票是新成员交互，网关路由层看不见，hub 侧归因上报（正经口径，无 fun 标记）。
+- **桩断言**：stub-test-duty-branch 新增 4 断言——p2p 图片发票转发载荷（fileKey/openId/msgType）、p2p 文件（事件帧 content 形状）转发载荷（死代码修复回归）、文件不误入 duty 转发、采集命中上报 feature=发票采集；fetch mock 增 /api/invoice/collect 离线捕获。
+- **文档批（全量审查对齐）**：README §5 补发票观察转发条目、API 表补 /api/ddl/pending 与 /api/hub/policy；LOGIC-MAP §2.1 管道补发票双线、§2.2 补 v106 负责人群整合卡、§2.4 补 /status 舰队健康与 workload 端点、§0/§1.3/§1.4/§1.6 补 workload-by-person 契约/全局锁口径/搬运缺行修补任务；v112/v113 两提交补档（同批）；DEVLOG 头部指针维护。
+- **测试**：七套桩全过（duty-branch / ddl-zombie / ddl-retry / ddl-confirm-targeted / status-fleet / workload / ddl-leader）。

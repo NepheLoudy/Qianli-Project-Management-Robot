@@ -17,14 +17,19 @@ const path = require('path');
 process.env.DUTY_CHAT_ID = 'oc_duty_group_test';
 process.env.DUTY_SERVICE_URL = 'http://127.0.0.1:39006';
 
-const captured = { dutyPayloads: [], botReplies: [], usageReports: [] };
+const captured = { dutyPayloads: [], botReplies: [], usageReports: [], invoiceCollects: [] };
 
 // 捕获统计归因上报（usageReport 走全局 fetch 到网关 :3010，测试离线）：
-// 断言 2026-09-22 活跃口径修正——娱乐功能上报带 fun 标记、抽奖带 learn 触发词
+// 断言 2026-09-22 活跃口径修正——娱乐功能上报带 fun 标记、抽奖带 learn 触发词；
+// 发票采集转发（→ approval-bot :3002）同样离线捕获，断言 file/image 双入口载荷
 const realFetch = global.fetch;
 global.fetch = (url, opts = {}) => {
   if (String(url).includes('/api/usage/report')) {
     try { captured.usageReports.push(JSON.parse(opts.body || '{}')); } catch (err) { /* 忽略 */ }
+    return Promise.resolve({ ok: true, json: async () => ({ ok: true }) });
+  }
+  if (String(url).includes('/api/invoice/collect')) {
+    try { captured.invoiceCollects.push(JSON.parse(opts.body || '{}')); } catch (err) { /* 忽略 */ }
     return Promise.resolve({ ok: true, json: async () => ({ ok: true }) });
   }
   return realFetch(url, opts);
@@ -230,6 +235,18 @@ function unAtEvent(text, msgId, chatId = 'oc_duty_group_test') {
   }));
   const imgPayload = captured.dutyPayloads.find((p) => p.type === 'image' && p.messageId === 'img1'); // group 图片转发（m1i）已先行入捕获，按 messageId 精确取 p2p 载荷
   check('p2p 图片 → 转发 image_key', imgPayload && imgPayload.imageKey === 'ik_test_123' && imgPayload.openId === 'ou_member_1', JSON.stringify(imgPayload));
+
+  // ⑤′ 发票采集观察转发（v112/114）：p2p 图片双线之一 + p2p 文件单线；事件帧 content 形状
+  const imgInvoice = captured.invoiceCollects.find((p) => p.messageId === 'img1');
+  check('p2p 图片 → 发票采集转发载荷（fileKey/openId/msgType）', imgInvoice && imgInvoice.fileKey === 'ik_test_123' && imgInvoice.openId === 'ou_member_1' && imgInvoice.msgType === 'image', JSON.stringify(imgInvoice));
+  await chatService.processChatMessage(p2pEvent('', 'file1', {
+    message_type: 'file',
+    content: JSON.stringify({ file_key: 'fk_dianzhipiao_1', file_name: '数电票.pdf' }),
+  }));
+  const fileInvoice = captured.invoiceCollects.find((p) => p.messageId === 'file1');
+  check('p2p 文件（事件帧 message.content）→ 发票采集转发（数电票 PDF 死代码修复回归）', fileInvoice && fileInvoice.fileKey === 'fk_dianzhipiao_1' && fileInvoice.fileName === '数电票.pdf' && fileInvoice.msgType === 'file', JSON.stringify(fileInvoice));
+  check('p2p 文件不误入 duty 转发', !captured.dutyPayloads.some((p) => p.messageId === 'file1'));
+  check('发票采集命中 → usage 上报 feature=发票采集', captured.usageReports.some((r) => r.openId === 'ou_member_1' && r.feature === '发票采集'));
 
   // ⑥ 非值日能力不受影响：p2p 非白名单 /status 仍被白名单拦截
   await chatService.processChatMessage(p2pEvent('/status', 's1'));
