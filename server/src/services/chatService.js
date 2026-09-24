@@ -338,7 +338,9 @@ function forwardInvoiceCollect(message, senderId, { msgType, items }) {
   for (const item of items) {
     fetch(`${serviceUrl}/api/invoice/collect`, {
       method: 'POST',
-      signal: AbortSignal.timeout(15000),
+      // 采集链路（下载+OCR+落表）可超 30s：fire-and-forget 不阻塞 hub 管线，
+      // 60s 只影响本次 fetch 等待上限（15s 会把正常慢识别误报「转发失败」，复查 P2-1）
+      signal: AbortSignal.timeout(60000),
       headers: {
         'Content-Type': 'application/json',
         'X-API-Token': process.env.API_TOKEN || '',
