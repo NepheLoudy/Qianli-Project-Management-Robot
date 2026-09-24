@@ -402,7 +402,7 @@ node push.js "提交说明"
 | `/api/bot/test-broadcast` | POST | 测试 DDL 播报（今日已播报过时返回 `skipped:true` 不重复发送） |
 | `/api/bot/history` | GET | 获取播报历史 |
 | `/api/bot/cron-status` | GET | 定时任务状态 |
-| `/api/hub/workload` | GET | 团队负载全景（工单+项目双源评分聚合，2026-09-24；本地运维台「团队负载」看板数据源）。聚合本项目项目表全量（effMembers 父负责人归并）+ ticket-bot `/api/tickets/workload-by-person`（10s 超时，失败降级仅项目侧并标 `ticketsSource:'unavailable'`）。评分=状态折减(in_progress 1.0/waiting 0.6/pending 0.3)×DDL 时效(消耗比分档,逾期递增封顶 2.7)×重要性(项目 priority/工单分桶代理)×角色(owner 1.3)，多人单按 shareCount 摊薄；unclaimed 不计个人分、归组别待接。权重随 `weights` 字段透出可核对 |
+| `/api/hub/workload` | GET | 团队负载全景（工单+项目+被@三源评分聚合，2026-09-24 上线/同日算法升级；本地运维台「团队负载」看板数据源）。聚合本项目项目表全量（effMembers 父负责人归并）+ ticket-bot `/api/tickets/workload-by-person`（10s 超时，失败降级仅项目侧并标 `ticketsSource:'unavailable'`）+ 网关 `/api/usage/mentions`（近 7 天被@，5s 超时，失败缺该维度并标 `mentionsSource:'unavailable'`）。评分=状态折减(in_progress 1.0/waiting 0.6/pending 0.3)×DDL 时效(消耗比分档,逾期递增封顶 2.7)×重要性(项目 priority/工单分桶代理)×组别系数(宣运×0.5、重装/步兵/哨兵×1.2,按任务归属组别)×角色(owner 1.3)+被@接量(每被@一次+0.01 分,近 7 天自然日滑窗,零任务纯被@的协调角色也入榜)，多人单按 shareCount 摊薄；unclaimed 不计个人分、归组别待接。权重随 `weights` 字段透出可核对 |
 
 ### 关键词/发言记录
 | 接口 | 方法 | 说明 |

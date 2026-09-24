@@ -121,6 +121,10 @@ module.exports = {
   ticketBot: {
     url: process.env.TICKET_BOT_URL || 'http://localhost:3003',
   },
+  // feishu-gateway 服务地址（团队负载评分的被@统计 /api/usage/mentions 拉取源）
+  gateway: {
+    url: process.env.GATEWAY_URL || 'http://localhost:3010',
+  },
   // ticket-bot 工单源表（与项目表同一个多维表格 base，直接读取做未结单播报）
   // 字段/节点值默认与 ticket-bot 的配置保持一致，若 ticket-bot 侧改动需同步
   ticketClose: {

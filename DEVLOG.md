@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v109**（2026-09-24，`a2fea48`）。上一版 v108（event fail-closed + 普通@关键词 usage 上报收口）。更早：v107（正经活跃口径批，`5b80e39`）、v106（负责人群整合播报，`211ce96`）。
+当前最新：**v110**（2026-09-24，随本提交落地）。上一版 v109（团队负载聚合端点，`a2fea48`）。更早：v108（event fail-closed + usage 上报收口）、v107（正经活跃口径批，`5b80e39`）。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -732,3 +732,13 @@
 - **评分=复核算法（非计数）**：单任务分 = 状态折减(in_progress 1.0/waiting 0.6/pending 0.3，completed/died 不计) × DDL 时效(时间消耗比 p=已耗÷(发起→DDL全窗)：≤0.5→0.8/≤0.8→1.0/≤1→1.3/逾期 1.3+min(天,14)×0.1 封顶 2.7/无DDL 0.5；工单无DDL按滞留 <24h 0.8/<72h 1.0/≥72h 1.2) × 重要性(项目 priority high1.5/medium1.0/low0.7；工单无优先级字段以分桶代理 urgent1.5/week1.0/waiting0.8) × 角色(项目 owner 1.3)；**多人协作工单按 shareCount 摊薄**；unclaimed 无人接单不计个人分、按面向组别归入组切面待接。输出：persons（按分降序，含项目/工单明细）/groups（均值/峰值/待接数）/unclaimedTop/orphanTickets/summary，权重随 `weights` 透出可核对。
 - 计算核心 `computeWorkload(projects, ticketData, nowMs)` 为纯函数（无 IO），stub 直测。
 - 测试：`server/scripts/stub-test-workload.js` 31 断言（时效系数边界 13 项/双源聚合与权重/父归并/摊薄/降级路径），**入 push.js 部署闸门（七套桩）**；全套全过。README（API 行+测试节）同步；registry.js 登记 windows 条目（随顶层仓）。
+
+## v110 · 2026-09-24 · 随本提交落地 · feat
+
+**负载算法升级：组别系数（宣运×0.5、重装/步兵/哨兵×1.2）+ 被@接量（每被@一次 +0.01 分，三源聚合）**
+
+- 提交说明：feat: workloadService 组别系数表 + 网关被@计数第三源
+- **组别系数（用户拍板）**：`GROUP_COEFF`——宣经/宣运/宣运组 ×0.5（宣传运营类任务密度高但单项压力轻）、重装/步兵/哨兵 ×1.2（机械兵种装配压力重）。按**任务归属组别**判定：项目乘 category、工单乘单级「面向组别」（ticket-bot workload-by-person 同批补 groups 字段，只动自家新端点不碰 unclosed-by-group 契约）；兵种分组只存在于项目 category（工单面向组别是职能组枚举），故兵种系数天然只作用于项目侧；多组命中连乘。
+- **被@接量（用户拍板）**：`MENTION_SCORE=0.01` 分/次、近 7 天自然日滑窗；`fetchMentionCounts()` 拉网关 `GET /api/usage/mentions?days=7`（gateway v31 同批上线，5s 超时，失败缺该维度并标 `mentionsSource:'unavailable'` 不 500）。被@数据**先入榜再算任务**——零任务但被@密集的协调型角色也显形（groups 留空）；persons 输出加 mentionCount/mentionScore，summary 加 mentionTotal，weights 透出 groupCoeff 与 mention 规则。
+- config.js 新增 `gateway.url`（GATEWAY_URL，默认 localhost:3010），server/.env.example 同步。
+- 测试：stub-test-workload.js 扩到 41 断言（新增 D 组组别系数 4 项/E 组被@接量 4 项/C 组网关降级 2 项，fetch mock 按 URL 分流）；七套桩全过。README workload 行更新。

@@ -1,7 +1,8 @@
 // 桩测试：团队负载聚合（/api/hub/workload 主链路）——
 // 时效系数边界/状态折减/优先级权重/owner 加权/多人摊薄/父项目负责人归并/
-// ticket-bot 拉取降级（仅项目侧 + ticketsSource 标注）
-// 全离线：stub 掉项目表全量拉取与 ticket-bot fetch（接入 push.js 部署前测试闸门）
+// 组别系数（宣运×0.5、重装步兵哨兵×1.2）/被@接量（0.01 分/次、mention-only 入榜）/
+// ticket-bot 与网关双降级路径
+// 全离线：stub 掉项目表全量拉取与 ticket-bot/网关 fetch（接入 push.js 部署前测试闸门）
 const assert = require('assert/strict');
 
 const projectService = require('../src/services/projectService');
@@ -13,11 +14,16 @@ const NOW = 1_700_000_000_000; // 固定基准时刻，边界断言可复算
 let fakeProjects = [];
 projectService.getProjects = async () => fakeProjects;
 
-// ---- 打桩：ticket-bot fetch（workloadService 内裸 fetch 运行时查全局，可后置打桩） ----
-let fetchImpl = null;
-globalThis.fetch = async (...args) => {
-  if (!fetchImpl) throw new Error('fetch not stubbed');
-  return fetchImpl(...args);
+// ---- 打桩：ticket-bot / 网关 fetch（按 URL 分流；workloadService 内裸 fetch 运行时查全局） ----
+let fetchTicketImpl = null;
+let fetchMentionsImpl = null;
+globalThis.fetch = async (url, ...args) => {
+  if (String(url).includes('/api/usage/mentions')) {
+    if (!fetchMentionsImpl) throw new Error('mentions fetch not stubbed');
+    return fetchMentionsImpl(url, ...args);
+  }
+  if (!fetchTicketImpl) throw new Error('ticket fetch not stubbed');
+  return fetchTicketImpl(url, ...args);
 };
 
 const { getTeamWorkload, computeWorkload, timePressureW, ticketElapsedW } = require('../src/services/workloadService');
@@ -76,13 +82,13 @@ const { getTeamWorkload, computeWorkload, timePressureW, ticketElapsedW } = requ
       ou_a: {
         name: '张三', groups: ['装配区'],
         tickets: [
-          { recordId: 't1', code: 'GD-1', title: '急单', bucket: 'urgent', daysLeft: 1, deadlineMs: NOW + 1 * DAY, deadlineFormatted: '', createdMs: NOW - 9 * DAY, shareCount: 1 },
+          { recordId: 't1', code: 'GD-1', title: '急单', bucket: 'urgent', daysLeft: 1, deadlineMs: NOW + 1 * DAY, deadlineFormatted: '', createdMs: NOW - 9 * DAY, shareCount: 1, groups: ['装配区'] },
         ],
       },
       ou_b: {
         name: '李四', groups: [],
         tickets: [
-          { recordId: 't2', code: 'GD-2', title: '双人单', bucket: 'week', daysLeft: 5, deadlineMs: NOW + 5 * DAY, deadlineFormatted: '', createdMs: NOW - 5 * DAY, shareCount: 2 },
+          { recordId: 't2', code: 'GD-2', title: '双人单', bucket: 'week', daysLeft: 5, deadlineMs: NOW + 5 * DAY, deadlineFormatted: '', createdMs: NOW - 5 * DAY, shareCount: 2, groups: [] },
         ],
       },
     },
@@ -90,13 +96,13 @@ const { getTeamWorkload, computeWorkload, timePressureW, ticketElapsedW } = requ
     unclaimed: [{ recordId: 'u1', code: 'GD-U', title: '待接单', elapsedHours: 30, groups: ['装配区'] }],
   };
 
-  const w = computeWorkload(effed, ticketData, NOW);
+  const w = computeWorkload(effed, ticketData, null, NOW);
   const by = (name) => w.persons.find((p) => p.name === name);
 
   // 状态折减 + 优先级 + owner 加权（P1: 1.0×1.3(时效)×1.5×1.3(owner)）
   near(by('张三').projects.find((x) => x.name === '视觉自瞄重构').score, 2.54, 'B1 in_progress+high+owner 加权');
   near(by('李四').projects.find((x) => x.name === '视觉自瞄重构').score, 1.95, 'B2 同项目参与成员（无 owner 加权）');
-  near(by('李四').projects.find((x) => x.name === '宣传物料设计').score, 0.39, 'B3 waiting 折减 0.6 × 无DDL 0.5 × owner 1.3');
+  near(by('李四').projects.find((x) => x.name === '宣传物料设计').score, 0.2, 'B3 waiting 折减 0.6 × 无DDL 0.5 × 宣运组系数 0.5 × owner 1.3');
   near(by('王五').projects[0].score, 0.22, 'B4 pending 0.3 × low 0.7 × owner 1.3 × 0.8');
   ok(!by('赵七') && !by('孙八') && !w.persons.some((p) => p.openId === 'ou_d' || p.openId === 'ou_e'), 'B5 completed/died 不计负载');
 
@@ -120,17 +126,54 @@ const { getTeamWorkload, computeWorkload, timePressureW, ticketElapsedW } = requ
   ok(grp('研发组') && grp('研发组').memberCount === 4, 'B14 组切面成员数（张三/李四/赵六/王五）');
   ok(grp('装配区') && grp('装配区').unclaimedCount === 1 && grp('装配区').maxPersonName === '张三', 'B15 组切面：unclaimed 归组 + 峰值人');
 
-  // —— C. getTeamWorkload 全链路：fetch 降级与正常 ——
+  // —— C. getTeamWorkload 全链路：双源降级与正常 ——
   fakeProjects = [projects[0]];
-  fetchImpl = async () => { throw new Error('connection refused'); };
+  fetchTicketImpl = async () => { throw new Error('connection refused'); };
+  fetchMentionsImpl = async () => { throw new Error('gateway unreachable'); };
   const degraded = await getTeamWorkload();
   ok(degraded.ticketsSource === 'unavailable' && degraded.persons.some((p) => p.name === '张三') && !degraded.persons[0].tickets.length,
     'C1 ticket-bot 不可用：降级仅项目侧，不 500，ticketsSource 标注');
+  ok(degraded.mentionsSource === 'unavailable' && degraded.persons.every((p) => !p.mentionScore),
+    'C1b 网关不可用：缺被@加分维度，mentionsSource 标注，不 500');
 
-  fetchImpl = async () => ({ ok: true, json: async () => ({ result: ticketData }) });
+  fetchTicketImpl = async () => ({ ok: true, json: async () => ({ result: ticketData }) });
+  fetchMentionsImpl = async () => ({ ok: true, json: async () => ({ days: 7, users: [{ id: 'ou_a', name: '张三', count: 30 }, { id: 'ou_mention', name: '孙协调', count: 150 }] }) });
   const full = await getTeamWorkload();
   ok(full.ticketsSource === 'ok' && full.persons[0].tickets.length > 0 && full.generatedAt, 'C2 双源正常：ticketsSource=ok + generatedAt');
-  ok(full.weights && full.weights.status && full.weights.ticketBucket, 'C3 权重参数随 meta 透出（口径可核对）');
+  ok(full.mentionsSource === 'ok', 'C2b 网关被@正常：mentionsSource=ok');
+  ok(full.weights && full.weights.status && full.weights.ticketBucket && full.weights.groupCoeff && full.weights.mention, 'C3 权重参数随 meta 透出（含组别系数与被@规则）');
+
+  // —— D. 组别系数（2026-09-24 用户拍板：宣运×0.5、重装/步兵/哨兵×1.2） ——
+  const projD = [
+    mk({ id: 'pd1', name: '宣经视频项目', status: 'in_progress', priority: 'medium', ddl: NOW + 5 * DAY, createdAt: NOW - 5 * DAY, category: '宣经', raw: { ownerMembers: [{ id: 'ou_g', name: '陈九' }] } }),
+    mk({ id: 'pd2', name: '步兵机器人装配', status: 'in_progress', priority: 'medium', ddl: NOW + 5 * DAY, createdAt: NOW - 5 * DAY, category: '步兵', raw: { ownerMembers: [{ id: 'ou_h', name: '周十' }] } }),
+    mk({ id: 'pd3', name: '研发普通项目', status: 'in_progress', priority: 'medium', ddl: NOW + 5 * DAY, createdAt: NOW - 5 * DAY, category: '研发组', raw: { ownerMembers: [{ id: 'ou_i', name: '吴十一' }] } }),
+  ];
+  const ticketD = {
+    persons: { ou_g: { name: '陈九', groups: [], tickets: [
+      { recordId: 'td1', code: 'GD-X', title: '宣运组工单', bucket: 'week', daysLeft: 5, deadlineMs: NOW + 5 * DAY, deadlineFormatted: '', createdMs: NOW - 5 * DAY, shareCount: 1, groups: ['宣运组'] },
+    ] } },
+    orphanTickets: [], unclaimed: [],
+  };
+  const wD = computeWorkload(buildEffMembers(projD), ticketD, null, NOW);
+  const byD = (name) => wD.persons.find((p) => p.name === name);
+  // 基准（研发组同参数 owner）：1.0×0.8(时效)×1.0×1.3 = 1.04
+  near(byD('吴十一').projects[0].score, 1.04, 'D1 未命中组别系数=1（基准）');
+  near(byD('陈九').projects[0].score, 0.52, 'D2 宣经项目 ×0.5');
+  near(byD('周十').projects[0].score, 1.25, 'D3 步兵项目 ×1.2');
+  near(byD('陈九').tickets[0].score, 0.4, 'D4 宣运组工单 ×0.5（单级面向组别）');
+
+  // —— E. 被@接量（0.01 分/次；mention-only 协调型角色入榜） ——
+  const wE = computeWorkload([], null, [
+    { id: 'ou_g', name: '陈九', count: 30 },
+    { id: 'ou_mention', name: '孙协调', count: 150 },
+  ], NOW);
+  const byE = (name) => wE.persons.find((p) => p.name === name);
+  ok(byE('陈九') && byE('陈九').mentionCount === 30 && byE('陈九').mentionScore === 0.3, 'E1 被@计数与加分（30 次 → +0.3）');
+  ok(byE('孙协调') && byE('孙协调').score === 1.5 && byE('孙协调').projectCount === 0,
+    'E2 零任务纯被@的协调角色入榜（150 次 → 1.5 分）');
+  ok(wE.summary.mentionTotal === 180, 'E3 汇总含被@总量');
+  ok(wE.persons[0].name === '孙协调', 'E4 被@分参与排序');
 
   console.log(`\n结果：${pass} 通过 / 0 失败`);
   process.exit(0);
