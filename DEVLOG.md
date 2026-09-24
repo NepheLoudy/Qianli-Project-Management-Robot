@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v110**（2026-09-24，`dbc33e8`）。上一版 v109（团队负载聚合端点，`a2fea48`）。更早：v108（event fail-closed + usage 上报收口）、v107（正经活跃口径批，`5b80e39`）。
+当前最新：**v111**（2026-09-24，随本提交落地）。上一版 v110（负载算法升级批，`dbc33e8`）。上一版 v109（团队负载聚合端点，`a2fea48`）。更早：v108（event fail-closed + usage 上报收口）、v107（正经活跃口径批，`5b80e39`）。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -742,3 +742,11 @@
 - **被@接量（用户拍板）**：`MENTION_SCORE=0.01` 分/次、近 7 天自然日滑窗；`fetchMentionCounts()` 拉网关 `GET /api/usage/mentions?days=7`（gateway v31 同批上线，5s 超时，失败缺该维度并标 `mentionsSource:'unavailable'` 不 500）。被@数据**先入榜再算任务**——零任务但被@密集的协调型角色也显形（groups 留空）；persons 输出加 mentionCount/mentionScore，summary 加 mentionTotal，weights 透出 groupCoeff 与 mention 规则。
 - config.js 新增 `gateway.url`（GATEWAY_URL，默认 localhost:3010），server/.env.example 同步。
 - 测试：stub-test-workload.js 扩到 41 断言（新增 D 组组别系数 4 项/E 组被@接量 4 项/C 组网关降级 2 项，fetch mock 按 URL 分流）；七套桩全过。README workload 行更新。
+
+## v111 · 2026-09-24 · 随本提交落地 · chore
+
+**duty 域 fallback 词形同步：请假两步确认新词形（duty-bot v36 联动批）**
+
+- dutyPolicyService.buildFallbackPolicy 的 p2pCommands 补 `确认请假`/`取消请假` + 斜杠变体共 4 词——duty-bot v36 请假改两步确认后，其 policy 下发清单已含新词形；本仓仅在 duty-bot 失联兜底时用内置清单，不同步则兜底期间「确认请假」会被当未识别指令拦下。
+- 精确词匹配（cmds.includes(text)），逐字清单故须逐字同步；下发策略正常时本清单不参与匹配。
+- 测试：stub-test-duty-branch.js 全过（该测试自带 stub 清单，不随 fallback 变化）。
