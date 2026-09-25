@@ -808,11 +808,12 @@ async function processChatMessage(event) {
       replyText = '⚠️ 指令仅支持在群聊中 @机器人 使用，私聊指令暂未开放';
     } else if (isApproval) {
       // 审批群：指令能力整体切换为财务相关，仅放行 /help 与 /approval-*
+      // （v116：全部转发透传发送者身份，approval-bot 侧 open_id 反查实名做操作留痕——安全审查 #2）
       console.log('[对话服务] 审批群指令:', cmd.command, '参数:', cmd.args);
       if (cmd.command === '/help') {
-        replyText = await handleApprovalCommand('/approval-help', []);
+        replyText = await handleApprovalCommand('/approval-help', [], { name: senderName, id: senderId });
       } else if (cmd.command.startsWith('/approval-')) {
-        replyText = await handleApprovalCommand(cmd.command, cmd.args);
+        replyText = await handleApprovalCommand(cmd.command, cmd.args, { name: senderName, id: senderId });
       } else {
         replyText = `🧾 本群为财务审批群，仅支持财务指令（/approval-*）\n发送 /help 查看可用财务指令`;
       }

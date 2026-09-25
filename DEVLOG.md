@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v115**（2026-09-25，随本提交落地；部署待实验室网段恢复后 npm run push 补上并回填哈希）。上一版 v114（`4fb1388`）。上一版 v113（发票转发超时 60s，`046174e`）。上一版 v112（发票采集观察转发，`4739bd7`）。更早：v111（duty fallback 词形同步，`c06277a`）、v110（负载算法升级批，`dbc33e8`）、v109（团队负载聚合端点，`a2fea48`）、v108（event fail-closed + usage 上报收口）、v107（正经活跃口径批，`5b80e39`）。
+当前最新：**v116**（2026-09-25，随本提交落地；部署待实验室网段恢复后 npm run push 补上并回填哈希，与 v115 同批部署）。上一版 v115（接取转发，`d3cbba7`）。上一版 v114（`4fb1388`）。上一版 v113（发票转发超时 60s，`046174e`）。上一版 v112（发票采集观察转发，`4739bd7`）。更早：v111（duty fallback 词形同步，`c06277a`）、v110（负载算法升级批，`dbc33e8`）、v109（团队负载聚合端点，`a2fea48`）、v108（event fail-closed + usage 上报收口）、v107（正经活跃口径批，`5b80e39`）。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -789,3 +789,12 @@
 - 链路：财务 @机器人 回「接取」→ hub 转发 `{command:'接取', args, senderName}` → approval-bot `claimBatch` 登记接取人并回执（approval-bot v49）。审批群 @机器人前置门槛不变。
 - 测试：新增 `server/scripts/stub-test-approval-take.js`（matchApprovalTake ×11 用例 + fetch 桩断言转发契约身份字段/既有调用兼容），README 测试节已登记；既有 stub（duty-branch/status-fleet/workload）回归全绿。
 - 部署状态：随本提交入库；**部署待实验室网段恢复后 `npm run push` 补上**（下一批回填哈希）。
+
+## v116 · 2026-09-25 · 随本提交落地 · fix
+
+**审批群 /approval-* 全量透传发送者身份（approval-bot 操作人实名留痕配套，安全审查 #2）**
+
+- 提交说明：fix: 审批群 /approval-* 全量透传 senderName/senderId（操作留痕防冒名配套）
+- `handleApprovalCommand` 的两个指令分支（/help 与 /approval-*）补传 `{name, id}`——v115 只有裸词「接取」带身份；approval-bot v51 起 submit/paid/reject 等资金操作以 open_id 反查通讯录实名落「最后操作人」留痕，需要全部转发都带身份。
+- 既有测试兼容：`stub-test-approval-take` 断言的转发契约不变（身份字段空串兜底），回归全绿。
+- 部署状态：与 v115 同批，待实验室网段恢复后 `npm run push`（下一批回填哈希）。
