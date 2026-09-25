@@ -291,16 +291,33 @@ async function handleDutyBranch(message, { isGroup, text, senderId }) {
 }
 
 /**
- * 转发 /approval-* 指令到 approval-bot（bambu 打印服务同款转发契约）
+ * 审批群裸词「接取」匹配：「接取」或「接取 <批次号>」（容忍尾部空白/标点）。
+ * 返回 { args }；非接取消息返回 null。仅审批群启用（调用方保证）。
  */
-async function handleApprovalCommand(command, args) {
+function matchApprovalTake(text) {
+  const t = String(text || '').trim().replace(/[。！!？?～~\s]+$/, '');
+  const m = t.match(/^接取(?:\s+(.+))?$/);
+  if (!m) return null;
+  return { args: m[1] ? m[1].split(/\s+/).filter(Boolean) : [] };
+}
+
+/**
+ * 转发 /approval-* 指令到 approval-bot（bambu 打印服务同款转发契约）
+ * @param {{name?: string, id?: string}} sender [可选] 发送者身份（「接取」登记接取人用）
+ */
+async function handleApprovalCommand(command, args, sender = null) {
   const serviceUrl = config.approval.serviceUrl;
   try {
     const res = await fetch(`${serviceUrl}/api/chat/command`, {
       method: 'POST',
       signal: AbortSignal.timeout(15000), // 与 duty 转发同款超时：下游挂起不能拖住 hub 事件循环
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command, args }),
+      body: JSON.stringify({
+        command,
+        args,
+        senderName: (sender && sender.name) || '',
+        senderId: (sender && sender.id) || '',
+      }),
     });
     if (!res.ok) {
       throw new Error(`财务服务响应失败: ${res.status}`);
@@ -761,6 +778,28 @@ async function processChatMessage(event) {
     };
   }
 
+  // 审批群裸词「接取」：交付卡领取回路（不走 / 指令解析，先于指令分支；
+  // 转发时透传发送者身份，approval-bot 用它登记接取人）
+  if (isApproval) {
+    const take = matchApprovalTake(text);
+    if (take) {
+      console.log('[对话服务] 审批群接取:', take.args, 'sender:', senderName || senderId || '未知');
+      replyText = await handleApprovalCommand('接取', take.args, { name: senderName, id: senderId });
+      try {
+        await bot.replyTextMessage(message.message_id, replyText);
+      } catch (err) {
+        console.error('[对话服务] 接取回执发送失败:', err.message);
+      }
+      return {
+        handled: true,
+        isCommand: true,
+        command: '接取',
+        senderId,
+        chatId: message.chat_id,
+      };
+    }
+  }
+
   const cmd = parseCommand(text);
   if (cmd) {
     if (!isGroup && !isP2pCommandAllowed(senderId, message.chat_id)) {
@@ -849,6 +888,8 @@ module.exports = {
   isMentionedBot,
   parseCommand,
   isP2pCommandAllowed,
+  matchApprovalTake, // 审批群裸词接取匹配（桩测试断言用）
+  handleApprovalCommand, // 转发契约断言（桩测试：身份字段透传）
   handleDutyForward, // ddlConfirmService R9 值日词表让位转发用（2026-09-15）
   maybeForwardExpressObserve, // 快递登记窗口观察（eventSubscription 非@群消息调用）
   fleetHealthLines, // stub 测试断言 /status 舰队健康段用

@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v114**（2026-09-25，随本提交落地）。上一版 v113（发票转发超时 60s，`046174e`）。上一版 v112（发票采集观察转发，`4739bd7`）。更早：v111（duty fallback 词形同步，`c06277a`）、v110（负载算法升级批，`dbc33e8`）、v109（团队负载聚合端点，`a2fea48`）、v108（event fail-closed + usage 上报收口）、v107（正经活跃口径批，`5b80e39`）。
+当前最新：**v115**（2026-09-25，随本提交落地；部署待实验室网段恢复后 npm run push 补上并回填哈希）。上一版 v114（`4fb1388`）。上一版 v113（发票转发超时 60s，`046174e`）。上一版 v112（发票采集观察转发，`4739bd7`）。更早：v111（duty fallback 词形同步，`c06277a`）、v110（负载算法升级批，`dbc33e8`）、v109（团队负载聚合端点，`a2fea48`）、v108（event fail-closed + usage 上报收口）、v107（正经活跃口径批，`5b80e39`）。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -778,3 +778,14 @@
 - **桩断言**：stub-test-duty-branch 新增 4 断言——p2p 图片发票转发载荷（fileKey/openId/msgType）、p2p 文件（事件帧 content 形状）转发载荷（死代码修复回归）、文件不误入 duty 转发、采集命中上报 feature=发票采集；fetch mock 增 /api/invoice/collect 离线捕获。
 - **文档批（全量审查对齐）**：README §5 补发票观察转发条目、API 表补 /api/ddl/pending 与 /api/hub/policy；LOGIC-MAP §2.1 管道补发票双线、§2.2 补 v106 负责人群整合卡、§2.4 补 /status 舰队健康与 workload 端点、§0/§1.3/§1.4/§1.6 补 workload-by-person 契约/全局锁口径/搬运缺行修补任务；v112/v113 两提交补档（同批）；DEVLOG 头部指针维护。
 - **测试**：七套桩全过（duty-branch / ddl-zombie / ddl-retry / ddl-confirm-targeted / status-fleet / workload / ddl-leader）。
+
+## v115 · 2026-09-25 · 随本提交落地 · feat
+
+**审批群裸词「接取」转发（approval-bot 交付卡领取回路）**
+
+- 提交说明：feat: 审批群裸词「接取」转发 approval-bot（交付卡领取登记，透传发送者身份）
+- `matchApprovalTake`（chatService 导出，桩断言用）：审批群裸词「接取」/「接取 <批次号>」匹配，容忍首尾空白与尾部标点（。！!？?～~）；非 `/` 指令路径，先于 parseCommand 分支处理（duty 分支之后）。
+- `handleApprovalCommand` 扩展第三参 `sender`：转发载荷新增 `senderName`/`senderId`（approval-bot 用 senderName 登记批次接取人）；既有 `/approval-*` 调用方不传 sender → 身份字段空串，完全向后兼容。
+- 链路：财务 @机器人 回「接取」→ hub 转发 `{command:'接取', args, senderName}` → approval-bot `claimBatch` 登记接取人并回执（approval-bot v49）。审批群 @机器人前置门槛不变。
+- 测试：新增 `server/scripts/stub-test-approval-take.js`（matchApprovalTake ×11 用例 + fetch 桩断言转发契约身份字段/既有调用兼容），README 测试节已登记；既有 stub（duty-branch/status-fleet/workload）回归全绿。
+- 部署状态：随本提交入库；**部署待实验室网段恢复后 `npm run push` 补上**（下一批回填哈希）。

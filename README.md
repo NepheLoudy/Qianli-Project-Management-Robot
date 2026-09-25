@@ -442,6 +442,7 @@ node push.js "提交说明"
 ### 测试
 ```bash
 node server/scripts/stub-test-duty-branch.js   # 值日分支 + 关键词回答 + 抽奖链路 stub 测试（不触飞书；含统计归因上报断言：抽奖/关键词回答带 fun 标记、抽奖带 learn 触发词——2026-09-22 活跃口径修正，娱乐功能不计入队员活跃）
+node server/scripts/stub-test-approval-take.js # 审批群裸词「接取」匹配 + 转发契约（senderName/senderId 透传，v113）
 node server/scripts/stub-test-workload.js      # 团队负载聚合 stub 测试（时效系数边界/状态折减/owner 加权/多人摊薄/父负责人归并/ticket-bot 拉取降级——2026-09-24）
 ```
 `npm run push` 部署前自动跑（测试不过不部署，`SKIP_TESTS=1` 可跳过）；新增行为须带新断言。
