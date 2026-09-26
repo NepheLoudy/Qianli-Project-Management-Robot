@@ -1,6 +1,6 @@
 // 桩测试：团队负载聚合（/api/hub/workload 主链路）——
 // 时效系数边界/状态折减/优先级权重/owner 加权/多人摊薄/父项目负责人归并/
-// 组别系数（宣运×0.5、重装步兵哨兵×1.2）/被@接量（0.01 分/次、mention-only 入榜）/
+// 组别系数（宣运×0.25、重装步兵哨兵×1.2）/被@接量（0.01 分/次、mention-only 入榜）/
 // ticket-bot 与网关双降级路径
 // 全离线：stub 掉项目表全量拉取与 ticket-bot/网关 fetch（接入 push.js 部署前测试闸门）
 const assert = require('assert/strict');
@@ -102,7 +102,7 @@ const { getTeamWorkload, computeWorkload, timePressureW, ticketElapsedW } = requ
   // 状态折减 + 优先级 + owner 加权（P1: 1.0×1.3(时效)×1.5×1.3(owner)）
   near(by('张三').projects.find((x) => x.name === '视觉自瞄重构').score, 2.54, 'B1 in_progress+high+owner 加权');
   near(by('李四').projects.find((x) => x.name === '视觉自瞄重构').score, 1.95, 'B2 同项目参与成员（无 owner 加权）');
-  near(by('李四').projects.find((x) => x.name === '宣传物料设计').score, 0.2, 'B3 waiting 折减 0.6 × 无DDL 0.5 × 宣运组系数 0.5 × owner 1.3');
+  near(by('李四').projects.find((x) => x.name === '宣传物料设计').score, 0.1, 'B3 waiting 折减 0.6 × 无DDL 0.5 × 宣运组系数 0.25 × owner 1.3');
   near(by('王五').projects[0].score, 0.22, 'B4 pending 0.3 × low 0.7 × owner 1.3 × 0.8');
   ok(!by('赵七') && !by('孙八') && !w.persons.some((p) => p.openId === 'ou_d' || p.openId === 'ou_e'), 'B5 completed/died 不计负载');
 
@@ -143,7 +143,7 @@ const { getTeamWorkload, computeWorkload, timePressureW, ticketElapsedW } = requ
   ok(full.mentionsSource === 'ok', 'C2b 网关被@正常：mentionsSource=ok');
   ok(full.weights && full.weights.status && full.weights.ticketBucket && full.weights.groupCoeff && full.weights.mention, 'C3 权重参数随 meta 透出（含组别系数与被@规则）');
 
-  // —— D. 组别系数（2026-09-24 用户拍板：宣运×0.5、重装/步兵/哨兵×1.2） ——
+  // —— D. 组别系数（2026-09-24 拍板 ×0.5，2026-09-26 再降至 ×0.25；重装/步兵/哨兵×1.2） ——
   const projD = [
     mk({ id: 'pd1', name: '宣经视频项目', status: 'in_progress', priority: 'medium', ddl: NOW + 5 * DAY, createdAt: NOW - 5 * DAY, category: '宣经', raw: { ownerMembers: [{ id: 'ou_g', name: '陈九' }] } }),
     mk({ id: 'pd2', name: '步兵机器人装配', status: 'in_progress', priority: 'medium', ddl: NOW + 5 * DAY, createdAt: NOW - 5 * DAY, category: '步兵', raw: { ownerMembers: [{ id: 'ou_h', name: '周十' }] } }),
@@ -159,9 +159,9 @@ const { getTeamWorkload, computeWorkload, timePressureW, ticketElapsedW } = requ
   const byD = (name) => wD.persons.find((p) => p.name === name);
   // 基准（研发组同参数 owner）：1.0×0.8(时效)×1.0×1.3 = 1.04
   near(byD('吴十一').projects[0].score, 1.04, 'D1 未命中组别系数=1（基准）');
-  near(byD('陈九').projects[0].score, 0.52, 'D2 宣经项目 ×0.5');
+  near(byD('陈九').projects[0].score, 0.26, 'D2 宣经项目 ×0.25');
   near(byD('周十').projects[0].score, 1.25, 'D3 步兵项目 ×1.2');
-  near(byD('陈九').tickets[0].score, 0.4, 'D4 宣运组工单 ×0.5（单级面向组别）');
+  near(byD('陈九').tickets[0].score, 0.2, 'D4 宣运组工单 ×0.25（单级面向组别）');
 
   // —— E. 被@接量（0.01 分/次；mention-only 协调型角色入榜） ——
   const wE = computeWorkload([], null, [

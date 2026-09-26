@@ -27,12 +27,12 @@ const PRIORITY_W = { high: 1.5, medium: 1.0, low: 0.7 };
 const TICKET_BUCKET_W = { urgent: 1.5, week: 1.0, waiting: 0.8 };
 // 项目 owner 是总负责人，心智负担高于参与成员
 const OWNER_ROLE_W = 1.3;
-// 组别系数（2026-09-24 用户拍板）：按任务归属组别乘——宣运域（项目 category「宣经」/
-// 工单面向组别「宣运组」）×0.5（宣传运营类任务密度高但单项压力轻）；重装/步兵/哨兵
-// 项目 ×1.2（机械兵种装配压力重——兵种分组只存在于项目 category，工单面向组别是
-// 职能组枚举，故兵种系数天然只作用于项目侧）。多组命中连乘（罕见）。
+// 组别系数（2026-09-24 用户拍板 ×0.5，2026-09-26 再降至 ×0.25）：按任务归属组别乘——
+// 宣运域（项目 category「宣经」/ 工单面向组别「宣运组」）×0.25（宣传运营类任务密度高
+// 但单项压力轻）；重装/步兵/哨兵项目 ×1.2（机械兵种装配压力重——兵种分组只存在于
+// 项目 category，工单面向组别是职能组枚举，故兵种系数天然只作用于项目侧）。多组命中连乘（罕见）。
 const GROUP_COEFF = {
-  宣经: 0.5, 宣运: 0.5, 宣运组: 0.5,
+  宣经: 0.25, 宣运: 0.25, 宣运组: 0.25,
   重装: 1.2, 步兵: 1.2, 哨兵: 1.2,
 };
 // 被@接量（2026-09-24 用户拍板）：群聊每被@一次 +0.01 分，网关 /api/usage/mentions
@@ -196,7 +196,7 @@ function computeWorkload(projects, ticketData, mentionUsers, nowMs) {
           ? timePressureW(Number(t.createdMs) || 0, t.deadlineMs, nowMs)
           : ticketElapsedW(Number(t.createdMs) || 0, nowMs);
         const bucketW = TICKET_BUCKET_W[t.bucket] || 1.0;
-        const gCoeff = groupCoeff(t.groups); // 单级「面向组别」系数（宣运组 ×0.5 等）
+        const gCoeff = groupCoeff(t.groups); // 单级「面向组别」系数（宣运组 ×0.25 等）
         const score = round2((bucketW * timeW * gCoeff) / (t.shareCount || 1)); // 多人协作单按人数摊薄
         person.score = round2(person.score + score);
         person.tickets.push({
