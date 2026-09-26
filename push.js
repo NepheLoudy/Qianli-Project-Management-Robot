@@ -203,6 +203,9 @@ async function deployCode() {
       '--exclude=node_modules',
       '--exclude=.git',
       '--exclude=.env',
+      // 本地私有环境覆盖（.env 上传单独走 SFTP，2026-09-27 补洞；打包根=server/）
+      '--exclude=.env.local',
+      '--exclude=.env.*.local',
       '--exclude=server/src/config/autoReplies.local.json',
       '--exclude=server/src/config/autoRepliesMention.local.json',
       '--exclude=server/src/config/lottery.local.json',

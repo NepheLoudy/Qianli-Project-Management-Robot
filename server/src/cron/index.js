@@ -16,6 +16,9 @@ const broadcastHistory = [];
 const STATE_FILE = process.env.BROADCAST_STATE_FILE
   || path.join(__dirname, '..', '..', '.broadcast-state.json');
 
+// 项目外的数据目录无人预建，加载时确保存在（quietHours 的 QUIET_BACKLOG_FILE 同款处理）
+try { fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true }); } catch { /* 写入失败时 saveBroadcastState 自会 warn */ }
+
 function loadBroadcastState() {
   try {
     if (fs.existsSync(STATE_FILE)) {

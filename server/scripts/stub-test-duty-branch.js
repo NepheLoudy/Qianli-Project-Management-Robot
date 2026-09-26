@@ -16,22 +16,32 @@ const path = require('path');
 // ---- 环境与占位（必须先于 require src 模块） ----
 process.env.DUTY_CHAT_ID = 'oc_duty_group_test';
 process.env.DUTY_SERVICE_URL = 'http://127.0.0.1:39006';
+// 接取 fail-closed / /test-ddl 节流断言用：审批群与 owner 播报群的 chat id
+process.env.APPROVAL_CHAT_ID = 'oc_approval_test';
+process.env.OWNER_CHAT_ID = 'oc_owner_test';
 
-const captured = { dutyPayloads: [], botReplies: [], usageReports: [], usageReportUrls: [], invoiceCollects: [] };
+const captured = { dutyPayloads: [], botReplies: [], usageReports: [], usageReportUrls: [], invoiceCollects: [], approvalForwards: [] };
 
 // 捕获统计归因上报（usageReport 走全局 fetch 到网关 :3010，测试离线）：
 // 断言 2026-09-22 活跃口径修正——娱乐功能上报带 fun 标记、抽奖带 learn 触发词；
-// 发票采集转发（→ approval-bot :3002）同样离线捕获，断言 file/image 双入口载荷
+// 发票采集转发（→ approval-bot :3002）同样离线捕获，断言 file/image 双入口载荷；
+// 其它 /api/chat/command 转发（approval/print）也捕获，断言接取 fail-closed 不外发
+//（注意排除 :39006 的占位 duty 服务——值日转发由占位服务自身记录）
 const realFetch = global.fetch;
 global.fetch = (url, opts = {}) => {
-  if (String(url).includes('/api/usage/report')) {
-    captured.usageReportUrls.push(String(url));
+  const urlStr = String(url);
+  if (urlStr.includes('/api/usage/report')) {
+    captured.usageReportUrls.push(urlStr);
     try { captured.usageReports.push(JSON.parse(opts.body || '{}')); } catch (err) { /* 忽略 */ }
     return Promise.resolve({ ok: true, json: async () => ({ ok: true }) });
   }
-  if (String(url).includes('/api/invoice/collect')) {
+  if (urlStr.includes('/api/invoice/collect')) {
     try { captured.invoiceCollects.push(JSON.parse(opts.body || '{}')); } catch (err) { /* 忽略 */ }
     return Promise.resolve({ ok: true, json: async () => ({ ok: true }) });
+  }
+  if (urlStr.includes('/api/chat/command') && !urlStr.includes(':39006')) {
+    try { captured.approvalForwards.push({ url: urlStr, body: JSON.parse(opts.body || '{}') }); } catch (err) { /* 忽略 */ }
+    return Promise.resolve({ ok: true, json: async () => ({ reply: '占位回执' }) });
   }
   return realFetch(url, opts);
 };
@@ -98,6 +108,18 @@ const config = require('../src/config');
 // 抽奖私有配置快照（测试写 .local.json，结束按原状恢复/删除，防止测试残留随 push 覆盖现网种子）
 const LOTTERY_LOCAL = path.join(__dirname, '../src/config/lottery.local.json');
 const lotteryLocalBefore = fs.existsSync(LOTTERY_LOCAL) ? fs.readFileSync(LOTTERY_LOCAL, 'utf8') : null;
+// 关键词回答表私有配置快照（2026-09-27 对抗审查 #4）：此前 upsert/delete 直写
+// autoReplies.local.json 无快照恢复，异常中断会留测试残留在 push 时覆盖现网种子
+const AUTO_LOCAL = path.join(__dirname, '../src/config/autoReplies.local.json');
+const autoLocalBefore = fs.existsSync(AUTO_LOCAL) ? fs.readFileSync(AUTO_LOCAL, 'utf8') : null;
+
+// 生产种子恢复：正常收尾与异常中断（.catch）两条退出路径都调用（等价 finally）
+function restoreProductionSeeds() {
+  if (lotteryLocalBefore === null) fs.rmSync(LOTTERY_LOCAL, { force: true });
+  else fs.writeFileSync(LOTTERY_LOCAL, lotteryLocalBefore);
+  if (autoLocalBefore === null) fs.rmSync(AUTO_LOCAL, { force: true });
+  else fs.writeFileSync(AUTO_LOCAL, autoLocalBefore);
+}
 
 let failed = 0;
 function check(desc, cond, detail = '') {
@@ -320,6 +342,36 @@ function unAtEvent(text, msgId, chatId = 'oc_duty_group_test') {
     try { autoReplyService.deleteRule('group', ['值日助手']); } catch { /* 清理失败不影响断言 */ }
   }
 
+  // ===== 接取 fail-closed（2026-09-27 对抗审查 #7）：senderId 为空串不转发 =====
+  await chatService.processChatMessage({
+    message: {
+      message_id: 'mTakeGhost',
+      message_type: 'text',
+      chat_type: 'group',
+      chat_id: 'oc_approval_test',
+      content: JSON.stringify({ text: '@_bot_1 接取' }),
+      mentions: [{ key: '@_bot_1', id: { open_id: 'ou_bot' }, mentioned_type: 'bot', name: '爆米花机-对话型' }],
+    },
+    sender: { sender_id: { name: '无身份者' } }, // 无 open_id/user_id → senderId 为空串
+  });
+  check('审批群接取：senderId 为空不转发，回身份提示（fail-closed）',
+    captured.botReplies.some((r) => r.messageId === 'mTakeGhost' && r.text.includes('无法识别发送者身份')),
+    JSON.stringify(captured.botReplies.filter((r) => r.messageId === 'mTakeGhost')));
+  check('审批群接取：fail-closed 时未向下游转发 /api/chat/command',
+    !captured.approvalForwards.some((p) => p.body.command === '接取'),
+    JSON.stringify(captured.approvalForwards));
+
+  // ===== /test-ddl 群节流（2026-09-27 对抗审查 #8）：每群 5 分钟一次 =====
+  // （占位 bot 无 sendDDLReport，首次触发走真实链路拉表失败回 ❌——节流在触发时即记时，不影响断言）
+  await chatService.processChatMessage(groupEvent('/test-ddl', 'mT1', 'oc_owner_test'));
+  check('/test-ddl：同群首次触发不被节流拦截',
+    captured.botReplies.some((r) => r.messageId === 'mT1' && r.text.includes('测试播报') && !r.text.includes('冷却中')),
+    JSON.stringify(captured.botReplies.filter((r) => r.messageId === 'mT1')));
+  await chatService.processChatMessage(groupEvent('/test-ddl', 'mT2', 'oc_owner_test'));
+  check('/test-ddl：同群 5 分钟内二次触发回冷却提示',
+    captured.botReplies.some((r) => r.messageId === 'mT2' && r.text.includes('该群测试播报冷却中')),
+    JSON.stringify(captured.botReplies.filter((r) => r.messageId === 'mT2')));
+
   // ===== 抽奖（动态指令集：/触发词 抽一次，2026-09-14 v87）=====
   lotteryService.upsertRule({ keywords: ['开抽测试'], answersText: '奖品甲|1' + String.fromCharCode(10) + '奖品乙|9' });
   lotteryService.upsertRule({ keywords: ['零权重'], answersText: '永不奖品|0' + String.fromCharCode(10) + '必有奖品|5' });
@@ -391,12 +443,12 @@ function unAtEvent(text, msgId, chatId = 'oc_duty_group_test') {
   // 清理：删测试池并按原状恢复 .local.json（测试残留不得随 push 上传覆盖现网种子）
   lotteryService.deleteRule(['开抽测试']);
   lotteryService.deleteRule(['零权重']);
-  if (lotteryLocalBefore === null) fs.rmSync(LOTTERY_LOCAL, { force: true });
-  else fs.writeFileSync(LOTTERY_LOCAL, lotteryLocalBefore);
+  restoreProductionSeeds();
 
   console.log(failed === 0 ? '全部通过 ✅' : failed + ' 项失败 ❌');
   process.exit(failed === 0 ? 0 : 1);
 })().catch((err) => {
   console.error('测试执行异常:', err);
+  restoreProductionSeeds(); // 异常中断同样恢复生产种子（2026-09-27 对抗审查 #4）
   process.exit(1);
 });

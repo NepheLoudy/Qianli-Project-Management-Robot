@@ -65,11 +65,17 @@ async function getDutyPolicy({ force = false } = {}) {
 }
 
 // 管辖范畴判定：chat_id 是否值日管辖群
-// （空列表 = 不限制，与 duty-bot 侧判定口径一致；失联兜底策略的
-//  groupChatIds 取本仓 DUTY_CHAT_ID，配置了该键即非空）
+// duty-bot 正常下发：空列表 = 不限制（与 duty-bot 侧判定口径一致，语义不变）。
+// 失联兜底策略（source==='fallback'）：groupChatIds 取本仓 DUTY_CHAT_ID，若该键未配
+// 则列表为空=无任何已知管辖群 → 按「无管辖群」fail-closed（2026-09-27 对抗审查 #3），
+// 不再被放大成「全群管辖」把所有群误关进值日引导语。
+// （空列表兜底仅出现在 DUTY_CHAT_ID 未配的部署；配置了该键即非空，走 includes 判定）
 function isManagedGroup(policy, chatId) {
   const ids = Array.isArray(policy.groupChatIds) ? policy.groupChatIds : [];
-  return ids.length === 0 || ids.includes(chatId);
+  if (ids.length === 0) {
+    return policy.source !== 'fallback'; // 正常下发空列表=不限制；兜底空列表=无管辖群
+  }
+  return ids.includes(chatId);
 }
 
 // 取件词形放行判定（已取n / 全部已取；策略正则清单，2026-09-17 快递助手）

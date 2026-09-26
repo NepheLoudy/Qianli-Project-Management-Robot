@@ -3,6 +3,7 @@ const projectService = require('./projectService');
 const keywordService = require('./keywordService');
 const config = require('../config');
 const usageReport = require('./usageReport');
+const { sanitizeCardText } = require('../utils/sanitize'); // 直接走 util（stub 测试会整体 mock feishu/bot）
 // chatService 延迟到调用时 require：存在经第三方模块回到本模块的循环加载链，
 // 顶层 require 会捕获到未绑定完成的导出对象（handleDutyForward 缺失）
 
@@ -300,6 +301,10 @@ async function handleReply(event) {
     pendingConfirmations.delete(senderId);
   }
 
+  // 项目名消毒（2026-09-27 对抗审查 #1）：群回执经 sendTextToChat 发送，表格里改写的
+  // 项目名不得携带 <at>/<链接>/标题 注入语法（本函数只剥注入语法，正常中文名不变）
+  const safeProjectName = sanitizeCardText(pending.projectName);
+
   // 确定回复目标：使用发送问询时的 chatId（群聊）或私聊
   const targetChatId = pending.sentMode === 'group' ? pending.chatId : null;
 
@@ -308,7 +313,7 @@ async function handleReply(event) {
       await projectService.updateProject(pending.projectId, { status: 'completed' });
       console.log(`[DDL确认] 已将项目 "${pending.projectName}" 状态更新为 completed`);
 
-      let successText = `✅ 已将项目 "${pending.projectName}" 的状态更新为 completed。\n如需修改，请在看板中手动调整。`;
+      let successText = `✅ 已将项目 "${safeProjectName}" 的状态更新为 completed。\n如需修改，请在看板中手动调整。`;
       if (chatType === 'p2p' || !targetChatId) {
         await bot.sendTextToUser(senderId, successText);
       } else {
@@ -321,7 +326,7 @@ async function handleReply(event) {
       list.push(pending);
       pendingConfirmations.set(senderId, list);
       try {
-        let failText = `❌ 更新项目 "${pending.projectName}" 状态失败：${err.message}\n请手动在看板中更新。`;
+        let failText = `❌ 更新项目 "${safeProjectName}" 状态失败：${err.message}\n请手动在看板中更新。`;
         if (chatType === 'p2p' || !targetChatId) {
           await bot.sendTextToUser(senderId, failText);
         } else {
@@ -333,7 +338,7 @@ async function handleReply(event) {
     }
   } else {
     console.log(`[DDL确认] 用户 ${senderId} 选择保持项目 "${pending.projectName}" 当前状态`);
-    let keepText = `📋 已记录你的回复，项目 "${pending.projectName}" 状态保持不变。请尽快在看板中更新进度。`;
+    let keepText = `📋 已记录你的回复，项目 "${safeProjectName}" 状态保持不变。请尽快在看板中更新进度。`;
     if (chatType === 'p2p' || !targetChatId) {
       await bot.sendTextToUser(senderId, keepText);
     } else {

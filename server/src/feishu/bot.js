@@ -1,6 +1,7 @@
 const config = require('../config');
 const { requestAPI } = require('./client');
 const bitable = require('./bitable');
+const { sanitizeCardText } = require('../utils/sanitize'); // 卡片文本消毒（实现在 utils/sanitize，此处复用+转出）
 
 // 语录缓存（避免每次播报都重新拉取）
 let quoteCache = null;
@@ -92,6 +93,9 @@ function buildAtTag(userId, name) {
   return `<at id="${userId}">${name || ''}</at>`;
 }
 
+// sanitizeCardText：官方卡文本消毒，实现在 utils/sanitize（见该文件头部说明）；
+// 本模块复用并在 module.exports 转出，供播报卡各表格字段拼接处调用
+
 // 获取项目在指定人员字段下的成员列表（mentionField 即多维表格字段名，对应各播报群）
 // 优先用归并后的 effMembers（父项目负责人视为子项目也有他，见 projectService.buildEffMembers）；
 // 无归并数据（非 DDL 播报树节点）时回退项目自身字段。
@@ -161,13 +165,18 @@ function renderTreeNode(node, mentionField, categoryInfo, ancestors = [], isLast
 
   const prefix = buildTreePrefix(level, isLast, ancestors);
 
+  // 表格字段（项目名/组别）消毒后再拼接，防卡片 markdown 注入（见 sanitizeCardText）
+  const safeName = sanitizeCardText(name);
+  const safeCategory = sanitizeCardText(category);
+
   let line = '';
   if (hasChildren) {
-    line = `${prefix}**📁 ${category}组 - ${name}**`;
+    line = `${prefix}**📁 ${safeCategory}组 - ${safeName}**`;
   } else if (isQualified) {
     const mentionTags = buildMentionTags(node, mentionField);
     // @ 标签为空（成员无 id 或未指派）时用纯文本指出负责人，保证任何情况都能看到责任人
-    const personDisplay = mentionTags || `👤 ${getMentionNames(node, mentionField)}`;
+    //（负责人姓名同为表格数据，同样消毒）
+    const personDisplay = mentionTags || `👤 ${sanitizeCardText(getMentionNames(node, mentionField))}`;
     let statusText = '';
     if (ddlCategory === 'overdue') {
       statusText = `已逾期 ${Math.abs(daysLeft)} 天`;
@@ -185,9 +194,9 @@ function renderTreeNode(node, mentionField, categoryInfo, ancestors = [], isLast
       statusText += ' · 🧟 子项目均已收尾，父项目待结';
     }
     const checkbox = daysLeft < 0 ? '🔴' : daysLeft <= 2 ? '🟠' : '🟢';
-    line = `${prefix}${checkbox} ${personDisplay} **${category}组 - ${name}** - ${statusText}\n${'   '.repeat(level)}  优先级: ${priorityLabel}，截止: ${ddlFormatted}`;
+    line = `${prefix}${checkbox} ${personDisplay} **${safeCategory}组 - ${safeName}** - ${statusText}\n${'   '.repeat(level)}  优先级: ${priorityLabel}，截止: ${ddlFormatted}`;
   } else {
-    line = `${prefix}**${category}组 - ${name}**`;
+    line = `${prefix}**${safeCategory}组 - ${safeName}**`;
   }
 
   const result = [line];
@@ -290,9 +299,10 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
       const when = t.elapsedHours >= 24
         ? `🔴 已发布 ${Math.floor(t.elapsedHours / 24)} 天无人接单`
         : `🟠 已发布 ${t.elapsedHours} 小时无人接单`;
-      const groups = t.groups && t.groups.length ? `（${t.groups.join('、')}）` : '';
+      // title/组别为工单表数据，消毒后拼接（防卡片 markdown 注入）
+      const groups = t.groups && t.groups.length ? `（${sanitizeCardText(t.groups.join('、'))}）` : '';
       const code = t.code ? `「${t.code}」` : '';
-      return `🆘 ${groups}${code}**${t.title}** - ${when}`;
+      return `🆘 ${groups}${code}**${sanitizeCardText(t.title)}** - ${when}`;
     });
     elements.push({ tag: 'markdown', content: lines.join('\n') });
   }
@@ -309,7 +319,7 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
       const when = t.daysLeft < 0 ? `🔴 已超理想结单时间 ${Math.abs(t.daysLeft)} 天` : t.daysLeft === 0 ? '🟠 今天到达理想结单时间' : `🟠 ${t.daysLeft}天后到达理想结单时间`;
       const date = t.deadlineFormatted ? `（📅 ${t.deadlineFormatted}）` : '';
       const code = t.code ? `「${t.code}」` : '';
-      return `🎫 👤 ${t.handlerName} ${code}**${t.title}** - ${when}${date}`;
+      return `🎫 👤 ${t.handlerName} ${code}**${sanitizeCardText(t.title)}** - ${when}${date}`;
     });
     elements.push({ tag: 'markdown', content: lines.join('\n') });
   }
@@ -324,7 +334,7 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
     const lines = buckets.week.map(t => {
       const date = t.deadlineFormatted ? `（📅 ${t.deadlineFormatted}）` : '';
       const code = t.code ? `「${t.code}」` : '';
-      return `🎫 👤 ${t.handlerName} ${code}**${t.title}** - ${t.daysLeft}天后到达理想结单时间${date}`;
+      return `🎫 👤 ${t.handlerName} ${code}**${sanitizeCardText(t.title)}** - ${t.daysLeft}天后到达理想结单时间${date}`;
     });
     elements.push({ tag: 'markdown', content: lines.join('\n') });
   }
@@ -344,7 +354,7 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
       const detail = t.deadlineFormatted
         ? (t.daysLeft !== null && t.daysLeft < 0 ? `🔴 已超理想结单时间（📅 ${t.deadlineFormatted}）` : `📅 ${t.deadlineFormatted}（${t.daysLeft}天后）`)
         : '未填理想结单时间';
-      return `⏳ ${who} ${code}**${t.title}** - ${detail}`;
+      return `⏳ ${who} ${code}**${sanitizeCardText(t.title)}** - ${detail}`;
     });
     elements.push({ tag: 'markdown', content: waitingLines.join('\n') });
   }
@@ -358,7 +368,8 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
       content: `**⏸️ 意外暂停项目（${pausedCount}个，需确认恢复或截止）**`,
     });
     const pausedLines = pausedProjects.map(p => {
-      return `⏸️ 👤 ${getMentionNames(p, mentionField)} **${p.category || '其他'}组 - ${p.name}**`;
+      // 项目名/组别/负责人姓名同为表格数据，消毒后拼接（防卡片 markdown 注入）
+      return `⏸️ 👤 ${sanitizeCardText(getMentionNames(p, mentionField))} **${sanitizeCardText(p.category || '其他')}组 - ${sanitizeCardText(p.name)}**`;
     });
     elements.push({
       tag: 'markdown',
@@ -373,12 +384,12 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
     });
   }
 
-  // 每日语录
+  // 每日语录（words/person 为语录表数据，消毒后拼接）
   if (quote) {
     elements.push({ tag: 'hr' });
     elements.push({
       tag: 'markdown',
-      content: `> ${quote.words} by ${quote.person || '佚名'}`,
+      content: `> ${sanitizeCardText(quote.words)} by ${sanitizeCardText(quote.person) || '佚名'}`,
     });
   }
 
@@ -599,4 +610,8 @@ module.exports = {
   sendTextToChat,
   sendTextToUser,
   replyTextMessage,
+  // 卡片文本消毒（ddlConfirmService 群回执项目名复用；stub 测试直接断言注入剥除）
+  sanitizeCardText,
+  // 播报树行渲染（stub 测试渲染冒烟用）
+  renderTreeNode,
 };

@@ -50,6 +50,14 @@ function proj(id, opts = {}) {
     // 反例4：子项目还在暂停（pending，非终态）→ 不算全部收尾
     proj('P5', { name: '子项目暂停的父项目', ddl: d(2), owner: 'ou_a', ownerName: '张三' }),
     proj('C6', { name: '暂停子项目', status: 'pending', parentId: 'P5' }),
+    // v118 占位支持行：子行全是占位（名字整体括号包住）且已终态 → 父项目观感是「无子项目」，
+    // 按叶子行正常播报、不标 🧟（2026-09-26 曼波反馈）
+    proj('P6', { name: '全占位子行的父项目', ddl: d(2), owner: 'ou_a', ownerName: '张三' }),
+    proj('C7', { name: '（重装支持项目）', status: 'completed', parentId: 'P6' }),
+    // 占位支持行对照：真实子行全终态的父项目 → 仍标 🧟（占位行不影响真实子行判定）
+    proj('P7', { name: '真实子行全终态的父项目', ddl: d(2), owner: 'ou_a', ownerName: '张三' }),
+    proj('C8', { name: '真实已完成子项目', status: 'completed', parentId: 'P7' }),
+    proj('C9', { name: '（占位支持行）', status: 'completed', parentId: 'P7' }),
   ];
 
   const result = await getDDLForBroadcastWithHierarchy('all', projects);
@@ -73,6 +81,15 @@ function proj(id, opts = {}) {
   ok(!all.some(n => n.id === 'P4'), '反例：DDL 在窗口外 → 暂不播（临近自动浮现）');
   ok(!all.some(n => n.id === 'P5'), '反例：子项目仅暂停（非终态）→ 不算全部收尾，不标 🧟');
 
+  // 占位支持行（v118，2026-09-27 对抗审查 #5 补断言）
+  const p6 = all.find(n => n.id === 'P6');
+  ok(Boolean(p6) && p6.isQualified === true && p6.hasChildren === false && p6.zombieParent !== true,
+    '占位支持行：子行全占位（已完成）的父项目按叶子行播报，不标 🧟');
+  ok(!all.some(n => n.id === 'C7'), '占位支持行：占位子行自身不单独成行');
+  const p7 = all.find(n => n.id === 'P7');
+  ok(Boolean(p7) && p7.zombieParent === true && p7.hasChildren === false,
+    '占位支持行：真实子行全终态（含占位行混挂）的父项目仍标 🧟');
+
   // 渲染冒烟：僵尸叶子行带 🧟 文案与责任人
   const bot = require('../src/feishu/bot');
   if (typeof bot.renderTreeNode === 'function') {
@@ -80,6 +97,12 @@ function proj(id, opts = {}) {
     const text = Array.isArray(line) ? line.join('\n') : String(line);
     ok(text.includes('🧟 子项目均已收尾'), '渲染：叶子行带 🧟 提示文案');
     ok(text.includes('张三'), '渲染：责任人可见');
+    // 占位支持行父项目的叶子行不带 🧟（渲染层与数据层口径一致）
+    if (p6) {
+      const p6Line = bot.renderTreeNode({ ...p6, children: [], hasChildren: false }, 'owner', null, [], true);
+      const p6Text = Array.isArray(p6Line) ? p6Line.join('\n') : String(p6Line);
+      ok(!p6Text.includes('🧟'), '渲染：全占位子行父项目的叶子行不带 🧟');
+    }
   }
 
   console.log(`\n结果：${pass} 通过 / 0 失败`);

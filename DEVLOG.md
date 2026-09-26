@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v119**（2026-09-26，负载宣运域系数再降 ×0.25，随本提交落地并部署）。上一版 v118（负责人群播报三问题修复，`5b94721`）。上一版 v117（全量审查批，`d3723df`）。上一版 v116（审批转发透传身份，`d5329aa`）。上一版 v115（接取转发，`d3cbba7`）。上一版 v114（`4fb1388`）。上一版 v113（发票转发超时 60s，`046174e`）。上一版 v112（发票采集观察转发，`4739bd7`）。更早：v111（duty fallback 词形同步，`c06277a`）、v110（负载算法升级批，`dbc33e8`）、v109（团队负载聚合端点，`a2fea48`）、v108（event fail-closed + usage 上报收口）、v107（正经活跃口径批，`5b80e39`）。
+当前最新：**v120**（2026-09-27，随本提交落地；部署待实验室网段恢复）。上一版 v119（负载系数批）。上一版 v118（负责人群播报三问题修复，`5b94721`）。上一版 v117（全量审查批，`d3723df`）。上一版 v116（审批转发透传身份，`d5329aa`）。上一版 v115（接取转发，`d3cbba7`）。上一版 v114（`4fb1388`）。上一版 v113（发票转发超时 60s，`046174e`）。上一版 v112（发票采集观察转发，`4739bd7`）。更早：v111（duty fallback 词形同步，`c06277a`）、v110（负载算法升级批，`dbc33e8`）、v109（团队负载聚合端点，`a2fea48`）、v108（event fail-closed + usage 上报收口）、v107（正经活跃口径批，`5b80e39`）。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -828,3 +828,13 @@
 - 桩测试期望重算：stub-test-workload B3 0.2→0.1（0.6×0.5×0.25×1.3）、D2 0.52→0.26、D4 0.4→0.2，41/41 通过；九套全绿。
 - 文档同批：README `/api/hub/workload` 行、运维台 `dashboard/registry.js` 与 `dashboard/public/index.html`「团队负载」看板说明、ticket-bot `unclosedService.js` 消费侧注释示例，全部同步 ×0.25。
 - 部署状态：部署目标实测可达，本批 `npm run push` 连同 v115-v118 待部署批一并上线（v115-v118 占位哈希已随本批回填）。
+
+## v120 · 2026-09-27 · 随本提交落地 · fix
+
+**第二轮全量对抗审查修复批（官方播报卡注入消毒 + 管辖兜底 fail-closed）**
+
+- 提交说明：fix: 对抗审查——播报卡注入消毒/值日兜底 fail-closed/回环监听/接取身份 fail-closed
+- **P1** 卡片注入：项目名/category/语录 words/person/工单 title 原样进卡 markdown，队员改表即可让四播报群+负责人群官方卡渲染 `<at id=all></at>` @所有人或挂钓鱼链。修：新增 utils/sanitize.js sanitizeCardText（剥 at 标签、链接语法还原纯文本、剥行首 #），应用于 renderTreeNode 三分支、语录卡、四类工单行、意外暂停行、DDL 确认群回执文本（负责人群卡走 renderTreeNode 自动覆盖）。
+- **P2**：dutyPolicyService 兜底策略空列表改 fail-closed（原 DUTY_CHAT_ID 未配时全群当管辖群、基础指令全关）；server 改仅回环监听（gateway 同机转发不受影响，LAN 探测 ✗ 属预期）；「接取」senderId 空串 fail-closed 不转发；/test-ddl 每群 5 分钟节流；cron 状态文件目录自建；.env/.env.example 补 BROADCAST_STATE_FILE=/c/qianli/hub-data/broadcast-state.json（原默认落 server/ 会被 SFTP 部署删掉→当日全量重播+逾期确认重发）；stub-test-duty-branch 的 autoReplies/lottery 种子改快照+finally 恢复。
+- 测试：九套全绿（ddl-zombie 13 通过含 v118 占位行新用例、duty-branch 增 4 断言）。
+- 部署状态：与 v115-v119 同批待上线。

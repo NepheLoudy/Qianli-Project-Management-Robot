@@ -501,11 +501,27 @@ function buildLeaderGroupStatusLine() {
   return `   ${l.label}（整合播报）：${target}，${mention}`;
 }
 
+// /test-ddl 每群节流（2026-09-27 对抗审查 #8）：同一播报群 5 分钟内只放行一次——
+// 该指令会全量拉项目表+工单表并真发卡片，群内无节流时连打会刷屏并打爆 bitable 配额。
+// 触发即计时（内存 map，重启清零无副作用）；私聊测试（无 chatCtx）不受限
+const testDdlThrottleMap = new Map(); // chatId -> 上次触发时间戳
+const TEST_DDL_THROTTLE_MS = 5 * 60 * 1000;
+
 async function handleTestDDLCommand(args, chatCtx, chatType) {
   // 非播报群的群聊里不借用 owner webhook 兜底，避免测试卡跨群打到 owner 群；
   // 私聊（管理员白名单）保留 owner webhook 兜底用于测试
   if (!chatCtx && chatType === 'group') {
     return '❌ 当前群未配置 DDL 播报，请在播报群内使用 /test-ddl（或私聊机器人测试，卡会发到 owner 群）';
+  }
+  // 群节流：触发即记时（失败重试同样要等冷却，防连打刷表/刷配额）
+  const throttleKey = chatCtx?.chatId || '';
+  if (throttleKey) {
+    const lastAt = testDdlThrottleMap.get(throttleKey) || 0;
+    if (Date.now() - lastAt < TEST_DDL_THROTTLE_MS) {
+      console.log(`[测试DDL] 群节流拦截（上次触发 ${Math.round((Date.now() - lastAt) / 1000)}s 前）: ${chatCtx.label}`);
+      return '⏳ 该群测试播报冷却中（每群 5 分钟一次），请稍后再试';
+    }
+    testDdlThrottleMap.set(throttleKey, Date.now());
   }
   try {
     const projectService = require('./projectService');
@@ -787,8 +803,15 @@ async function processChatMessage(event) {
   if (isApproval) {
     const take = matchApprovalTake(text);
     if (take) {
-      console.log('[对话服务] 审批群接取:', take.args, 'sender:', senderName || senderId || '未知');
-      replyText = await handleApprovalCommand('接取', take.args, { name: senderName, id: senderId });
+      if (!senderId) {
+        // fail-closed（2026-09-27 对抗审查 #7）：识别不到发送者 open_id 时不转发——
+        // 否则 approval-bot 会把接取登记在空身份上，接取留痕失效
+        console.warn('[对话服务] 审批群接取：无法识别发送者身份，拒绝转发（fail-closed）');
+        replyText = '⚠️ 无法识别发送者身份，请通过群聊 @机器人 正常触发';
+      } else {
+        console.log('[对话服务] 审批群接取:', take.args, 'sender:', senderName || senderId || '未知');
+        replyText = await handleApprovalCommand('接取', take.args, { name: senderName, id: senderId });
+      }
       try {
         await bot.replyTextMessage(message.message_id, replyText);
       } catch (err) {

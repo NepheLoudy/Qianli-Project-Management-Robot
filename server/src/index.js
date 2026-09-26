@@ -357,9 +357,12 @@ app.post('/api/feishu/event', async (req, res) => {
 });
 
 function startServer() {
-  const server = app.listen(config.port, () => {
-    console.log(`🚀 服务器运行在 http://localhost:${config.port}`);
-    console.log(`📚 API 文档: http://localhost:${config.port}/api/health`);
+  // 仅绑定回环地址（2026-09-27 对抗审查 #6）：消费方（feishu-gateway、运维台 SSH 代理、
+  // 各机器人服务转发）都在部署目标本机经 localhost 访问本服务。原先绑定全部网卡 +
+  // cors 全开，写端点（有 X-API-Token 鉴权）与会话窗口直接暴露给局域网；回环绑定后暴露面闭合
+  const server = app.listen(config.port, '127.0.0.1', () => {
+    console.log(`🚀 服务器运行在 http://127.0.0.1:${config.port}（仅回环监听，局域网不可达）`);
+    console.log(`📚 API 文档: http://127.0.0.1:${config.port}/api/health`);
   });
 
   startCronJobs();
