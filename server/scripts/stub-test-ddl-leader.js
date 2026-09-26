@@ -34,10 +34,10 @@ function proj(id, opts = {}) {
     owner: opts.owner || '',
     ownerName: opts.ownerName || '',
     ownerMembers: opts.owner ? [{ id: opts.owner, name: opts.ownerName || '' }] : [],
-    contributers: [],
+    contributers: opts.contrib ? [{ id: opts.contrib, name: opts.contribName || '' }] : [],
     dkyjContributers: opts.dkyj ? [{ id: opts.dkyj, name: opts.dkyjName || '' }] : [],
-    sjContributers: [],
-    xyContributers: [],
+    sjContributers: opts.sj ? [{ id: opts.sj, name: opts.sjName || '' }] : [],
+    xyContributers: opts.xy ? [{ id: opts.xy, name: opts.xyName || '' }] : [],
     ddl: opts.ddl || '',
     priority: 'medium',
     status: opts.status || 'in_progress',
@@ -97,6 +97,38 @@ config.ddl.leaderGroup = {
 
   const urgentOnly = realBot.buildLeaderDDLReportCard([], allData.urgent, config.ddl.leaderGroup);
   ok(urgentOnly.header.template === 'orange', '仅临期时卡片头橙色');
+
+  // ---------- 2026-09-26 曼波反馈回归：负责人群行 @ 全部责任人（不只 owner） ----------
+  // 实例：yolo魔改学习 owner 空、负责人填在视觉组字段 → 整合卡曾显示「未指派」且不 @ 负责人
+  const UNION_PROJECTS = [
+    proj('P_YOLO', { name: 'yolo魔改学习（桩）', ddl: d(-1), sj: 'ou_sj_hh', sjName: '贺韵洁' }),
+    proj('P_NOOWNER2', { name: '彻底无主逾期项目', ddl: d(-2) }),
+  ];
+  const unionData = await realProjectService.getDDLForBroadcastWithHierarchy('all', UNION_PROJECTS);
+  const unionCard = realBot.buildLeaderDDLReportCard(unionData.overdue, unionData.urgent, config.ddl.leaderGroup);
+  const unionText = unionCard.elements.map(e => e.content || '').join('\n');
+  ok(unionText.includes('<at id="ou_sj_hh">贺韵洁</at>'), '负责人群行 @ 组字段负责人（不只 owner）');
+  const yoloLine = unionText.split('\n').find(l => l.includes('yolo魔改学习（桩）'));
+ok(yoloLine && !yoloLine.includes('未指派') && yoloLine.includes('ou_sj_hh'), '组字段负责人的行 @ 本人且不再显示未指派');
+  const orphanCard = realBot.buildLeaderDDLReportCard(
+    (await realProjectService.getDDLForBroadcastWithHierarchy('all', [proj('P_NOBODY', { name: '真无主项目', ddl: d(-1) })])).overdue,
+    [], config.ddl.leaderGroup);
+  ok(orphanCard.elements.map(e => e.content || '').join('\n').includes('未指派'), '五字段全空的行仍回退「未指派」不丢行');
+
+  // ---------- 2026-09-26 曼波反馈回归：占位支持行不计入僵尸子项目 ----------
+  // 实测：自定义客户端/大符 的子行是「（重装支持项目）」类占位行，观感是无子项目却报「子项目均已收尾」
+  const ZOMBIE_PROJECTS = [
+    proj('P_ZREAL', { name: '真实僵尸父项目', ddl: d(-1) }),
+    proj('P_ZREAL_C', { name: '真实已完成子项目', ddl: d(-10), status: 'completed', parentId: 'P_ZREAL' }),
+    proj('P_ZPH', { name: '占位僵尸父项目', ddl: d(-1) }),
+    proj('P_ZPH_C', { name: '（占位支持项目）', ddl: d(-10), status: 'completed', parentId: 'P_ZPH' }),
+  ];
+  const zombieData = await realProjectService.getDDLForBroadcastWithHierarchy('all', ZOMBIE_PROJECTS);
+  let zreal = null, zph = null;
+  walkNames(zombieData.overdue); // 走一遍确认不炸
+  (function findZ(nodes) { (nodes || []).forEach(n => { if (n.id === 'P_ZREAL') zreal = n; if (n.id === 'P_ZPH') zph = n; if (n.children) findZ(n.children); }); })([...zombieData.overdue, ...zombieData.urgent]);
+  ok(zreal && zreal.zombieParent === true, '真实子行全收尾的父项目仍标 🧟（9-17 口径保留）');
+  ok(zph && zph.zombieParent !== true && zph.isQualified === true, '全占位子行的父项目按无子项目叶子行正常播报（不标 🧟）');
 
   // ---------- 桩注入（在 require cron 之前）：飞书发送 / 工单桶 / 逾期确认 ----------
   const Module = require('module');

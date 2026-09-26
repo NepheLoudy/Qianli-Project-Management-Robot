@@ -94,8 +94,30 @@ function buildAtTag(userId, name) {
 
 // 获取项目在指定人员字段下的成员列表（mentionField 即多维表格字段名，对应各播报群）
 // 优先用归并后的 effMembers（父项目负责人视为子项目也有他，见 projectService.buildEffMembers）；
-// 无归并数据（非 DDL 播报树节点）时回退项目自身字段
+// 无归并数据（非 DDL 播报树节点）时回退项目自身字段。
+// mentionField='all'：owner + 四个组字段的并集（按 id 去重）——负责人群整合卡用。
+// 只认 owner 会把组字段负责人报成「未指派」、负责人本人也收不到 @（2026-09-25 曼波反馈）
+function allResponsibleMembers(project) {
+  const fieldLists = project.effMembers
+    ? ['owner', 'contributers', 'dkyjcontributers', 'sjcontributers', 'xycontributers'].map(f => project.effMembers[f] || [])
+    : [
+        getFieldMembers(project, 'owner'),
+        project.contributers || [],
+        project.dkyjContributers || [],
+        project.sjContributers || [],
+        project.xyContributers || [],
+      ];
+  const acc = [];
+  for (const list of fieldLists) {
+    for (const m of list) {
+      if (m && m.id && !acc.some(x => x.id === m.id)) acc.push(m);
+    }
+  }
+  return acc;
+}
+
 function getFieldMembers(project, mentionField) {
+  if (mentionField === 'all') return allResponsibleMembers(project);
   if (project.effMembers) {
     return project.effMembers[mentionField] || [];
   }
@@ -406,7 +428,8 @@ async function sendCardToChat(chatId, card) {
 
 // 负责人群整合卡（2026-09-22）：每日播报时把「逾期 + 临期」跨播报群汇总再播一遍，
 // 卡头 @ 指定负责人。只含逾期/临期两栏（weekly 概览、工单分栏、语录不上此卡，
-// 负责人群看的是升级事项而非全量日报）；各项目行仍按 owner 字段 @ 责任人。
+// 负责人群看的是升级事项而非全量日报）；项目行 @ 全部责任人（owner + 四个组字段
+// 并集，mentionField='all'——2026-09-25 曼波反馈：只认 owner 会把组字段负责人报成未指派）。
 function buildLeaderDDLReportCard(overdueProjects, urgentProjects, leader = {}) {
   const mentionTag = leader.mentionOpenId ? buildAtTag(leader.mentionOpenId, leader.mentionName) : '';
   const elements = [];
@@ -422,7 +445,7 @@ function buildLeaderDDLReportCard(overdueProjects, urgentProjects, leader = {}) 
   if (overdueCount > 0) {
     elements.push({ tag: 'markdown', content: `**🔴 已逾期项目（${overdueCount}个）**` });
     overdueProjects.forEach((root, index) => {
-      const lines = renderTreeNode(root, 'owner', 'overdue', [], index === overdueProjects.length - 1);
+      const lines = renderTreeNode(root, 'all', 'overdue', [], index === overdueProjects.length - 1);
       elements.push({ tag: 'markdown', content: lines.join('\n') });
     });
     elements.push({ tag: 'hr' });
@@ -432,7 +455,7 @@ function buildLeaderDDLReportCard(overdueProjects, urgentProjects, leader = {}) 
   if (urgentCount > 0) {
     elements.push({ tag: 'markdown', content: `**🟠 ${config.ddl.alertDays}天内到期（${urgentCount}个）**` });
     urgentProjects.forEach((root, index) => {
-      const lines = renderTreeNode(root, 'owner', 'urgent', [], index === urgentProjects.length - 1);
+      const lines = renderTreeNode(root, 'all', 'urgent', [], index === urgentProjects.length - 1);
       elements.push({ tag: 'markdown', content: lines.join('\n') });
     });
   }

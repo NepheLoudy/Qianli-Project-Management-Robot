@@ -168,6 +168,13 @@ function buildHierarchy(projects) {
   return rootProjects;
 }
 
+// 占位支持行：名字整体被括号包住（如「（重装支持项目）」「（基建支持项目）」），
+// 属挂靠/支持性质的书记行，不算真实子项目——不参与僵尸父项目判定（2026-09-26 曼波反馈）
+function isPlaceholderChildName(name) {
+  const t = String(name || '').trim();
+  return /^[（(].+[）)]$/.test(t);
+}
+
 // 播报归属成员字段（与播报群 mentionField / 看板人员字段对齐）；
 // 播报时每个项目的「有效成员」= 自身成员 ∪ 各祖先（父/爷…）同字段成员，按 id 去重——
 // 父项目负责人是总负责人，视为其名下所有子项目都有他；子项目自身负责人照旧（自身优先）
@@ -317,12 +324,19 @@ async function getDDLForBroadcastWithHierarchy(filter = 'all', preloadedProjects
       if (node.hasChildren && node.children.length === 0) {
         // 僵尸父项目（2026-09-17 用户口径）：名下子项目已全部终态（completed/died），
         // 父项目自己却未完成且 DDL 已进播报窗口——恢复为叶子行参与播报并打 🧟 标注，
-        // 避免未完成的父项目因「父项目只当容器」的规则静默变成僵尸
-        const allChildrenTerminal = item.children.length > 0
-          && item.children.every(c => c.status === 'completed' || c.status === 'died');
+        // 避免未完成的父项目因「父项目只当容器」的规则静默变成僵尸。
+        // 占位支持行（名字整体括号包住，如「（重装支持项目）」）不计入子项目判定——
+        // 2026-09-26 曼波反馈：全占位子行的父项目观感是「无子项目」，不该报「子项目均已收尾」
+        const realChildren = item.children.filter(c => !isPlaceholderChildName(c.name));
+        const allChildrenTerminal = realChildren.length > 0
+          && realChildren.every(c => c.status === 'completed' || c.status === 'died');
         if (allChildrenTerminal && node.ddlCategory !== 'none') {
           node.isQualified = true;
           node.zombieParent = true;
+          node.hasChildren = false;
+          pruned.push(node);
+        } else if (realChildren.length === 0 && node.isQualified) {
+          // 子行全占位（或本无真实子行）：按无子项目叶子行正常播报，不打 🧟
           node.hasChildren = false;
           pruned.push(node);
         }
