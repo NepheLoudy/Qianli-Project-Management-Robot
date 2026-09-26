@@ -17,7 +17,7 @@ const path = require('path');
 process.env.DUTY_CHAT_ID = 'oc_duty_group_test';
 process.env.DUTY_SERVICE_URL = 'http://127.0.0.1:39006';
 
-const captured = { dutyPayloads: [], botReplies: [], usageReports: [], invoiceCollects: [] };
+const captured = { dutyPayloads: [], botReplies: [], usageReports: [], usageReportUrls: [], invoiceCollects: [] };
 
 // 捕获统计归因上报（usageReport 走全局 fetch 到网关 :3010，测试离线）：
 // 断言 2026-09-22 活跃口径修正——娱乐功能上报带 fun 标记、抽奖带 learn 触发词；
@@ -25,6 +25,7 @@ const captured = { dutyPayloads: [], botReplies: [], usageReports: [], invoiceCo
 const realFetch = global.fetch;
 global.fetch = (url, opts = {}) => {
   if (String(url).includes('/api/usage/report')) {
+    captured.usageReportUrls.push(String(url));
     try { captured.usageReports.push(JSON.parse(opts.body || '{}')); } catch (err) { /* 忽略 */ }
     return Promise.resolve({ ok: true, json: async () => ({ ok: true }) });
   }
@@ -346,6 +347,16 @@ function unAtEvent(text, msgId, chatId = 'oc_duty_group_test') {
   await chatService.processChatMessage(groupEvent('/开抽测试', 'mL4', 'oc_duty_group_test'));
   check('抽奖：值日管辖群 @/开抽测试 → 回奖品（先于引导语）', prizeTexts.some((p) => captured.botReplies.some((r) => r.messageId === 'mL4' && r.text.includes(p))));
 
+  // 裸词（无 / 前缀）不是指令：drawForCommand 会剥 / 做裸词匹配，值日群裸词「开抽测试」
+  // 不得被当抽奖吃掉（2026-09-25 修复，README §10「/触发词」口径）→ 落基础指令关闭引导语
+  await chatService.processChatMessage(groupEvent('开抽测试', 'mL4b', 'oc_duty_group_test'));
+  check('抽奖：值日管辖群裸词「开抽测试」不触发抽奖（仅 / 前缀为指令）',
+    !captured.botReplies.some((r) => r.messageId === 'mL4b' && prizeTexts.some((p) => r.text.includes(p))),
+    JSON.stringify(captured.botReplies.filter((r) => r.messageId === 'mL4b')));
+  check('抽奖：裸词落回基础指令关闭引导语',
+    captured.botReplies.some((r) => r.messageId === 'mL4b' && r.text.includes('值日助手')),
+    JSON.stringify(captured.botReplies.filter((r) => r.messageId === 'mL4b')));
+
   // 未注册指令不落入抽奖，仍是未知指令提示
   await chatService.processChatMessage(groupEvent('/胡说八道', 'mL4x', 'oc_normal_group'));
   check('抽奖：未注册指令不误吞，仍回未知指令', captured.botReplies.some((r) => r.messageId === 'mL4x' && r.text.includes('未知指令')));
@@ -364,6 +375,10 @@ function unAtEvent(text, msgId, chatId = 'oc_duty_group_test') {
   check('统计上报：抽奖/关键词回答全部带 fun 标记', captured.usageReports.length > 0 && captured.usageReports.every((r) => (r.feature !== '抽奖' && r.feature !== '关键词回答') || r.fun === 1), JSON.stringify(captured.usageReports));
   check('统计上报：抽奖带 learn 触发词', captured.usageReports.some((r) => r.feature === '抽奖' && Array.isArray(r.learn) && r.learn.includes('开抽测试')), JSON.stringify(captured.usageReports));
   check('统计上报：关键词回答带 fun 标记', captured.usageReports.some((r) => r.feature === '关键词回答' && r.fun === 1), JSON.stringify(captured.usageReports));
+  // 上报地址统一由 GATEWAY_URL 推导（config.gateway.url），不再读独立 USAGE_REPORT_URL（2026-09-25）
+  check('统计上报：地址统一走 config.gateway（GATEWAY_URL）',
+    captured.usageReportUrls.length > 0 && captured.usageReportUrls.every((u) => u === `${config.gateway.url}/api/usage/report`),
+    JSON.stringify(captured.usageReportUrls));
 
   // 启停：停用后指令不命中（落未知指令提示），恢复后照常
   lotteryService.setEnabled(false);

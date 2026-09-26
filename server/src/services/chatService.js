@@ -239,7 +239,11 @@ async function handleDutyBranch(message, { isGroup, text, senderId }) {
       return { handled: true, reply: '' };
     }
     // 抽奖动态指令（值日管辖群同样可用，先于基础指令关闭的引导语）
-    const lotteryDraw = lotteryService.drawForCommand(text, message.chat_id);
+    // 仅 / 前缀触发（README §10 口径「/触发词」）：drawForCommand 会剥掉 / 做裸词精确匹配，
+    // 裸词「抽奖」等普通聊天不能被当成指令吃掉（2026-09-25 审查修复）
+    const lotteryDraw = text && text.startsWith('/')
+      ? lotteryService.drawForCommand(text, message.chat_id)
+      : null;
     if (lotteryDraw) {
       console.log('[对话服务] 值日群抽奖指令:', lotteryDraw.keywords.join('/'));
       usageReport.report(senderId, '抽奖', { fun: true, learn: lotteryDraw.keywords });

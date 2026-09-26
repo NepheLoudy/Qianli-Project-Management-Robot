@@ -8,7 +8,11 @@
 // 上报失败静默忽略（fire-and-forget，3s 超时）。
 // ============================================================
 
-const URL = process.env.USAGE_REPORT_URL || 'http://localhost:3010/api/usage/report';
+const config = require('../config');
+
+// 网关地址统一走 config.gateway（GATEWAY_URL），与本仓其他网关消费方（workloadService 等）同源；
+// 旧独立键 USAGE_REPORT_URL 已废弃不再读取（.env 残留该键无副作用，见 .env.example 标注）
+const URL = `${config.gateway.url}/api/usage/report`;
 const TOKEN = process.env.API_TOKEN || '';
 const TIMEOUT_MS = 3000;
 

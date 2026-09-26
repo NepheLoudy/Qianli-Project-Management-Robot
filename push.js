@@ -27,17 +27,15 @@ function runTestGate() {
     return true;
   }
   const { spawnSync } = require('child_process');
-  // 全量桩闸门（2026-09-22 起）：七套桩全过才部署（2026-09-24 起 workload 负载聚合入闸）
-  const suites = [
-    'stub-test-duty-branch.js',
-    'stub-test-ddl-zombie.js',
-    'stub-test-ddl-retry.js',
-    'stub-test-ddl-confirm-targeted.js',
-    'stub-test-status-fleet.js',
-    'stub-test-ddl-leader.js',
-    'stub-test-workload.js',
-  ].map(f => `node server/scripts/${f}`).join(' && ');
-  if (!suites) { console.log('[测试闸门] 无测试命令，跳过'); return true; }
+  // 全量桩闸门（2026-09-13 R4 引入；2026-09-22 起全量化）：自动发现 server/scripts/stub-test-*.js，
+  // 排序稳定保证命令可复现；新增套件自动入闸，不再逐套手工挂清单
+  // （2026-09-25 修复：手工清单漏挂 stub-test-approval-take.js）
+  const suites = require('fs').readdirSync(path.join(__dirname, 'server', 'scripts'))
+    .filter(f => /^stub-test-.+\.js$/.test(f))
+    .sort()
+    .map(f => `node server/scripts/${f}`)
+    .join(' && ');
+  if (!suites) { console.log('[测试闸门] 未发现 stub-test-*.js，跳过'); return true; }
   console.log('[测试闸门] 运行:', suites);
   const r = spawnSync(suites, { shell: true, stdio: 'inherit', cwd: __dirname });
   if (r.status !== 0) {

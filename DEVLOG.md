@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v116**（2026-09-25，随本提交落地；部署待实验室网段恢复后 npm run push 补上并回填哈希，与 v115 同批部署）。上一版 v115（接取转发，`d3cbba7`）。上一版 v114（`4fb1388`）。上一版 v113（发票转发超时 60s，`046174e`）。上一版 v112（发票采集观察转发，`4739bd7`）。更早：v111（duty fallback 词形同步，`c06277a`）、v110（负载算法升级批，`dbc33e8`）、v109（团队负载聚合端点，`a2fea48`）、v108（event fail-closed + usage 上报收口）、v107（正经活跃口径批，`5b80e39`）。
+当前最新：**v117**（2026-09-26，随本提交落地；部署待实验室网段恢复后与 v115/v116 同批补上并回填哈希）。上一版 v116（身份全量透传）。上一版 v115（接取转发，`d3cbba7`）。上一版 v114（`4fb1388`）。上一版 v113（发票转发超时 60s，`046174e`）。上一版 v112（发票采集观察转发，`4739bd7`）。更早：v111（duty fallback 词形同步，`c06277a`）、v110（负载算法升级批，`dbc33e8`）、v109（团队负载聚合端点，`a2fea48`）、v108（event fail-closed + usage 上报收口）、v107（正经活跃口径批，`5b80e39`）。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -798,3 +798,13 @@
 - `handleApprovalCommand` 的两个指令分支（/help 与 /approval-*）补传 `{name, id}`——v115 只有裸词「接取」带身份；approval-bot v51 起 submit/paid/reject 等资金操作以 open_id 反查通讯录实名落「最后操作人」留痕，需要全部转发都带身份。
 - 既有测试兼容：`stub-test-approval-take` 断言的转发契约不变（身份字段空串兜底），回归全绿。
 - 部署状态：与 v115 同批，待实验室网段恢复后 `npm run push`（下一批回填哈希）。
+
+## v117 · 2026-09-26 · 随本提交落地 · fix
+
+**七仓全量审查修复批（本仓无 P0/P1）**
+
+- 提交说明：fix: 全量审查批——会议提醒补静默闸/裸词抽奖口径/闸门自动发现/统计归源
+- 会议提醒三连：删除 MEETING_KEYWORDS/containsMeetingKeyword/containsMeetingLink/extractMeetingLinks 死代码；补 sender_type==='app' 跳过（防其他应用会议卡误触发 @所有人）；按顶层晚间静默铁律补闸（gatePayload 原样补发 + quietHours 新增 registerPayloadHandler 注册口），新增第 9 套桩 stub-test-meeting-reminder（quiet/open/flush 三场景，push 闸门自动收编）。
+- 其余：push.js 测试闸门改 readdirSync 自动发现 stub-test-*.js（根治 v115 套件漏挂）；值日管辖群抽奖仅 `/` 前缀触发（对齐 README §10，裸词不再被吃）；usageReport 上报地址归源 config.gateway.url（删独立 USAGE_REPORT_URL 双配置源）；quoteTableId 硬编码默认值加先例注释；README 运维指令群内可用为既定设计口径文档化。
+- 测试：九套全绿（原八套 + 新增会议提醒套）。
+- 随批并入：本地《抽奖配置表.xlsx》用户数据编辑（非本批代码改动，一并入库）。

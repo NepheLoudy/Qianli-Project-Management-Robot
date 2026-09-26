@@ -1,32 +1,19 @@
 const bot = require('../feishu/bot');
 const config = require('../config');
 const keywordService = require('./keywordService');
+const quietHours = require('../utils/quietHours');
 
 const processedMessageIds = new Set();
 
 const lastTriggerTime = new Map();
 const TRIGGER_INTERVAL_MS = 5 * 60 * 1000;
 
-const MEETING_KEYWORDS = [
-  '会议',
-  '开会',
-  '开会了',
-  '开始会议',
-  '组织会议',
-  '召开会议',
-];
-
-const MEETING_URL_REGEX = /(https?:\/\/(?:[^\s]+\.)?feishu\.cn\/(?:meeting|calendar|vc)\/[^\s]+)/gi;
-
-function containsMeetingKeyword(text) {
-  if (!text) return false;
-  return MEETING_KEYWORDS.some(keyword => text.includes(keyword));
-}
-
-function containsMeetingLink(text) {
-  // 不用 regex.test：MEETING_URL_REGEX 带 g 标志，test 会推进 lastIndex 导致后续调用漏判
-  return extractMeetingLinks(text).length > 0;
-}
+// 晚间静默补闸（顶层 AGENTS「晚间静默」铁律，2026-09-25 审查补齐）：会议提醒是
+// 事件通知型自动播报（收到会议卡片 → @所有人），静默窗口内不直接发送，
+// 载荷原样落盘积压，09:00 整点由冲刷器按本处理器原样补发同一文本。
+quietHours.registerPayloadHandler('meeting-reminder', async (payload) => {
+  await bot.sendTextToChat(payload.chatId, payload.text);
+});
 
 function containsMeetingCard(message) {
   if (!message || !message.content) return false;
@@ -116,12 +103,6 @@ function containsMeetingCard(message) {
   }
 }
 
-function extractMeetingLinks(text) {
-  if (!text) return [];
-  const matches = text.match(MEETING_URL_REGEX);
-  return matches || [];
-}
-
 async function processMeetingMessage(event) {
   const message = event.message;
   if (!message) {
@@ -133,6 +114,11 @@ async function processMeetingMessage(event) {
 
   if (chatType !== 'group') {
     return { handled: false, reason: '非群聊消息' };
+  }
+
+  // 其他应用/机器人发出的会议卡片不触发（防应用间互触发 @所有人，同 autoReplyService 口径）
+  if (event.sender?.sender_type === 'app') {
+    return { handled: false, reason: '应用消息跳过' };
   }
 
   // 监听机器人所在的所有群聊，无需手动配置
@@ -162,6 +148,12 @@ async function processMeetingMessage(event) {
 
   const replyText = '<at user_id="all">所有人</at> 📢 收到会议卡片通知！\n请及时查看并参加会议！';
 
+  // 晚间静默闸门（gatePayload）：静默窗口内载荷落盘积压并返回 true → 跳过直发，
+  // 09:00 整点由冲刷器按文件头注册的处理器原样补发（即时事件型通知，不走 gateTask 重扫）
+  if (quietHours.gatePayload('meeting-reminder', { chatId, text: replyText }, `[会议提醒] ${chatId}`)) {
+    return { handled: true, triggered: false, deferred: true, reason: '晚间静默积压，待统一补发' };
+  }
+
   try {
     await bot.sendTextToChat(chatId, replyText);
     console.log(`[会议提醒] 已在群聊 ${chatId} 中 @所有人 发送会议提醒 (会议卡片)`);
@@ -178,8 +170,5 @@ async function processMeetingMessage(event) {
 
 module.exports = {
   processMeetingMessage,
-  containsMeetingKeyword,
-  containsMeetingLink,
   containsMeetingCard,
-  extractMeetingLinks,
 };

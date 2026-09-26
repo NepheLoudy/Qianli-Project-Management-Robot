@@ -50,6 +50,8 @@ module.exports = {
     projectTableId: process.env.BITABLE_PROJECT_TABLE_ID || '',
     logTableId: process.env.BITABLE_LOG_TABLE_ID || '',
     keywordTableId: process.env.BITABLE_KEYWORD_TABLE_ID || '',
+    // quoteTableId 默认值为生产先例表 id（历史原因未 env 化，值保持不动）：
+    // 换环境/换 base 必须显式配 BITABLE_QUOTE_TABLE_ID，否则会静默读写到生产语录表（2026-09-25 审查标注）
     quoteTableId: process.env.BITABLE_QUOTE_TABLE_ID || 'tblGLs09KVReMYHk',
   },
   feishuEvent: {

@@ -133,6 +133,14 @@ function registerTask(name, fn) {
 }
 
 /**
+ * 注册一次性载荷补发处理器：gatePayload 积压的载荷由它按积压时的内容原样重发。
+ * （2026-09-25 起 meetingReminderService 会议提醒补闸使用；此前本项目无一次性载荷场景）
+ */
+function registerPayloadHandler(name, fn) {
+  payloadHandlers[name] = fn;
+}
+
+/**
  * 定时任务静默闸门：非静默直接执行；静默窗口内登记积压，冲刷时重跑整个 run。
  * @returns {Promise<{deferred: boolean}>} 实际结果或积压登记信息
  */
@@ -274,6 +282,7 @@ module.exports = {
   gateTask,
   gatePayload,
   registerTask,
+  registerPayloadHandler,
   initQuietHoursFlush,
   getStatus,
 };
