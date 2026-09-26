@@ -1,3 +1,9 @@
+/**
+ * ⚠️ 已废弃（仅存档，勿用）：GitHub Actions 时代的部署脚本——gh run 判定读的是
+ * status 字段（只有 queued/in_progress/completed），success/failure 在 conclusion，
+ * 本脚本的成功/失败分支永不命中且空转 5 分钟；且会把旧 .env 模板一并提交。
+ * 现役部署一律走 `npm run push`（SFTP 到小电脑）。见 README「部署」节。
+ */
 const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');

@@ -123,7 +123,7 @@ function parseXlsx(xlsxPath, opts) {
     const rawProbs = texts.map((_, i) => parseNum(cells[probCols[i]]));
     rawProbs.forEach((v, i) => {
       if (v === null) return;
-      if (v === NaN || !Number.isInteger(v) || v < 0 || v > 100) {
+      if (!Number.isInteger(v) || v < 0 || v > 100) {
         warn(`第 ${rowNo} 行 候选${i + 1} 的概率「${cells[probCols[i]]}」不是 0-100 的整数，按留空处理`);
         rawProbs[i] = null;
       }

@@ -2,7 +2,7 @@
 
 版本隔离单位：一次 `npm run push`（= 一次 git 提交 + 一次部署）。v1~v47 于 2026-09-04 按提交历史回溯编号，此后每次 push 在文末追加新版本（规则见顶层 [AGENTS.md](../../AGENTS.md)）。
 
-当前最新：**v120**（2026-09-27，随本提交落地；部署待实验室网段恢复）。上一版 v119（负载系数批）。上一版 v118（负责人群播报三问题修复，`5b94721`）。上一版 v117（全量审查批，`d3723df`）。上一版 v116（审批转发透传身份，`d5329aa`）。上一版 v115（接取转发，`d3cbba7`）。上一版 v114（`4fb1388`）。上一版 v113（发票转发超时 60s，`046174e`）。上一版 v112（发票采集观察转发，`4739bd7`）。更早：v111（duty fallback 词形同步，`c06277a`）、v110（负载算法升级批，`dbc33e8`）、v109（团队负载聚合端点，`a2fea48`）、v108（event fail-closed + usage 上报收口）、v107（正经活跃口径批，`5b80e39`）。
+当前最新：**v121**（2026-09-27，随本提交落地；部署待实验室网段恢复）。上一版 v120（二轮对抗审查批）。上一版 v119（负载系数批）。上一版 v118（负责人群播报三问题修复，`5b94721`）。上一版 v117（全量审查批，`d3723df`）。上一版 v116（审批转发透传身份，`d5329aa`）。上一版 v115（接取转发，`d3cbba7`）。上一版 v114（`4fb1388`）。上一版 v113（发票转发超时 60s，`046174e`）。上一版 v112（发票采集观察转发，`4739bd7`）。更早：v111（duty fallback 词形同步，`c06277a`）、v110（负载算法升级批，`dbc33e8`）、v109（团队负载聚合端点，`a2fea48`）、v108（event fail-closed + usage 上报收口）、v107（正经活跃口径批，`5b80e39`）。
 
 ## 阶段十二 · 评审批修（2026-09-05）
 
@@ -838,3 +838,12 @@
 - **P2**：dutyPolicyService 兜底策略空列表改 fail-closed（原 DUTY_CHAT_ID 未配时全群当管辖群、基础指令全关）；server 改仅回环监听（gateway 同机转发不受影响，LAN 探测 ✗ 属预期）；「接取」senderId 空串 fail-closed 不转发；/test-ddl 每群 5 分钟节流；cron 状态文件目录自建；.env/.env.example 补 BROADCAST_STATE_FILE=/c/qianli/hub-data/broadcast-state.json（原默认落 server/ 会被 SFTP 部署删掉→当日全量重播+逾期确认重发）；stub-test-duty-branch 的 autoReplies/lottery 种子改快照+finally 恢复。
 - 测试：九套全绿（ddl-zombie 13 通过含 v118 占位行新用例、duty-branch 增 4 断言）。
 - 部署状态：与 v115-v119 同批待上线。
+
+## v121 · 2026-09-27 · 随本提交落地 · fix
+
+**扩展范围审查批（hub 外围：auto-deploy/sync 脚本）**
+
+- 提交说明：fix: 扩展审查——auto-deploy.js 废弃横幅（gh status 判定 bug/旧 .env 模板）、syncAutoReplies NaN 死比较清理
+- auto-deploy.js 加「已废弃勿用」横幅（gh run status 字段永不等于 success/failure，成功也空转 5 分钟超时；会提交旧 .env 模板——是否整目录删除见桌面存疑清单七.3）。
+- syncAutoReplies.js 删 `v === NaN` 死比较（NaN 不与任何值全等，实际由 Number.isInteger 兜住）。
+- 测试：node --check 全过（纯外围脚本，无行为链路改动）。
