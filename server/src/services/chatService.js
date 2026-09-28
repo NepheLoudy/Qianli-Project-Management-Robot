@@ -315,7 +315,12 @@ async function handleApprovalCommand(command, args, sender = null) {
     const res = await fetch(`${serviceUrl}/api/chat/command`, {
       method: 'POST',
       signal: AbortSignal.timeout(15000), // 与 duty 转发同款超时：下游挂起不能拖住 hub 事件循环
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        // X-API-Token（全局共享值，forwardInvoiceCollect 同源）——approval-bot 2026-09-29
+        // 对抗审查 P1-2 起对 command 端点挂 requireApiToken，本头随批上线（先 hub 后 approval）
+        'X-API-Token': process.env.API_TOKEN || '',
+      },
       body: JSON.stringify({
         command,
         args,

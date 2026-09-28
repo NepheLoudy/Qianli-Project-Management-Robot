@@ -847,3 +847,11 @@
 - auto-deploy.js 加「已废弃勿用」横幅（gh run status 字段永不等于 success/failure，成功也空转 5 分钟超时；会提交旧 .env 模板——是否整目录删除见桌面存疑清单七.3）。
 - syncAutoReplies.js 删 `v === NaN` 死比较（NaN 不与任何值全等，实际由 Number.isInteger 兜住）。
 - 测试：node --check 全过（纯外围脚本，无行为链路改动）。
+
+## v122 · 2026-09-29 · 随本提交落地 · fix
+
+**approval-bot 指令通道鉴权配套（财务项目第三轮对抗审查 P1-2，跨仓同批）**
+
+- 提交说明：fix: approval 指令转发补 X-API-Token 头（对端挂 requireApiToken 的同批配套）
+- `handleApprovalCommand` 转发 `/approval-*` 指令与裸词「接取」到 approval-bot 时补 `X-API-Token` 头（forwardInvoiceCollect 同源全局共享值）；approval-bot 侧同批对 `/api/chat/command` 挂 `requireApiToken`（此前该端点零鉴权，资金指令信任锚是 body 自报 senderId，本机进程/浏览器 CSRF 可伪造到账/退票）。部署顺序先 hub（带头发旧对端忽略）后 approval-bot（挂闸），任意时刻链路不断。
+- 测试：node --check 过；端到端以目标机本机 curl 验证（无 token 403 / 带 token 200）。
