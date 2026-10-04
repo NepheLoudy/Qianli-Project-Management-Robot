@@ -306,6 +306,15 @@ function matchApprovalTake(text) {
 }
 
 /**
+ * 私聊催办回复词形（强词形，2026-10-04）：命中即静默让位 approval-bot 回复轮询。
+ * 只收「延期/推迟/无法提交」类无歧义词——approval-bot 侧 parseReply 还有「还没/下周」
+ * 等模糊词形，但 hub 没有催办语境，模糊词形放行（避免误伤普通私聊闲聊）。
+ */
+function isInvoiceDeferLikeReply(text) {
+  return /延期|推迟|无法提交|不能提交|没法提交|交不了|无法提供|办不了|开不出来|开不了/.test(String(text || ''));
+}
+
+/**
  * 转发 /approval-* 指令到 approval-bot（bambu 打印服务同款转发契约）
  * @param {{name?: string, id?: string}} sender [可选] 发送者身份（「接取」登记接取人用）
  */
@@ -650,7 +659,7 @@ async function handleLotteryCommand() {
     return '🎲 抽奖：已启用，但奖池为空（请在 抽奖配置表.xlsx 填写触发词/奖品/概率后 npm run push）';
   }
 
-  const lines = [`🎲 抽奖奖池（${lotteryConfig.replies.length} 个触发规则，消息含触发词即抽一次）`, ''];
+  const lines = [`🎲 抽奖奖池（${lotteryConfig.replies.length} 个触发规则，@我 发 /触发词 即抽一次）`, ''];
   lotteryConfig.replies.forEach((r, i) => {
     const weights = autoReplyService.displayWeights(r.answers);
     const pool = r.answers.map((a, j) => {
@@ -660,7 +669,7 @@ async function handleLotteryCommand() {
     lines.push(`  ${i + 1}. [${r.keywords.join('/')}] → ${pool.slice(0, 80)}${pool.length > 80 ? '…' : ''}`);
   });
   lines.push('');
-  lines.push('群里发触发词即抽一次（无需@我）；改奖池编辑 抽奖配置表.xlsx 后 npm run push 同步');
+  lines.push('群里 @我 发 /触发词 即抽一次；改奖池编辑 抽奖配置表.xlsx 后 npm run push 同步');
   return lines.join('\n');
 }
 
@@ -884,6 +893,13 @@ async function processChatMessage(event) {
       console.log('[对话服务] 关键词自动回复命中:', autoHit.keywords.join('/'), `(表: ${autoHit.source})`);
       usageReport.report(senderId, '关键词回答', { fun: true }); // 普通群 @ 命中此前漏报（2026-09-24 复查批补齐）
       replyText = autoHit.text;
+    } else if (!isGroup && isInvoiceDeferLikeReply(text)) {
+      // 私聊「延期/无法提交」类回复（2026-10-04 陈方硕反馈）：这是对 approval-bot 催办
+      // 私聊的答复，approval-bot 小时级回复轮询会处理并回执——hub 若按普通闲聊回欢迎语，
+      // 用户视角=机器人没听懂、功能坏了。强词形才静默（不带催办语境的模糊词如「还没/下周」
+      // 不拦，避免误伤普通私聊）；approval-bot 侧词表见其 invoiceUrgeService.parseReply
+      console.log('[对话服务] 私聊命中催办回复词形（延期/无法提交），静默让位 approval-bot 回复轮询');
+      replyText = '';
     } else if (!isGroup && autoReplyService.hasKeywordHitForText(text)) {
       console.log('[对话服务] 私聊命中关键词，提示仅面向群聊');
       replyText = '⚠️ 关键词自动回复仅面向群聊开放，请在群里 @我 使用。';
@@ -922,6 +938,7 @@ module.exports = {
   parseCommand,
   isP2pCommandAllowed,
   matchApprovalTake, // 审批群裸词接取匹配（桩测试断言用）
+  isInvoiceDeferLikeReply, // 私聊催办回复词形（桩测试断言用，2026-10-04）
   handleApprovalCommand, // 转发契约断言（桩测试：身份字段透传）
   handleDutyForward, // ddlConfirmService R9 值日词表让位转发用（2026-09-15）
   maybeForwardExpressObserve, // 快递登记窗口观察（eventSubscription 非@群消息调用）

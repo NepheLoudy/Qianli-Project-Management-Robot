@@ -23,6 +23,19 @@ async function main() {
   assert.equal(chatService.matchApprovalTake('/approval-batch status'), null, '斜杠指令不归接取分支');
   assert.deepEqual(chatService.matchApprovalTake('接取 27备赛20步兵5 备注'), { args: ['27备赛20步兵5', '备注'] }, '多参数切分');
 
+  // ---------- 单元：isInvoiceDeferLikeReply（私聊催办回复词形，2026-10-04） ----------
+  // 命中 → hub 静默让位 approval-bot 小时级回复轮询；只收强词形，模糊词（还没/下周）放行
+  assert.equal(chatService.isInvoiceDeferLikeReply('延期7天'), true, '陈方硕实况词形');
+  assert.equal(chatService.isInvoiceDeferLikeReply('延期'), true, '裸延期');
+  assert.equal(chatService.isInvoiceDeferLikeReply('推迟几天'), true, '推迟');
+  assert.equal(chatService.isInvoiceDeferLikeReply('无法提交'), true, '无法提交');
+  assert.equal(chatService.isInvoiceDeferLikeReply('发票开不了'), true, '开不了');
+  assert.equal(chatService.isInvoiceDeferLikeReply('交不了'), true, '交不了');
+  assert.equal(chatService.isInvoiceDeferLikeReply('下周给你'), false, '模糊词形放行（hub 无催办语境）');
+  assert.equal(chatService.isInvoiceDeferLikeReply('发票还没开'), false, '「还没」放行');
+  assert.equal(chatService.isInvoiceDeferLikeReply('你好'), false, '普通闲聊不受影响');
+  assert.equal(chatService.isInvoiceDeferLikeReply(''), false, '空文本');
+
   // ---------- 转发契约：handleApprovalCommand 透传发送者身份 ----------
   const captured = [];
   const realFetch = global.fetch;

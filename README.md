@@ -33,7 +33,7 @@
 ### 4. 群聊发言记录（原关键词监听）
 - 监听指定群聊（`KEYWORD_CHAT_ID`）的**全部消息**（自 v23 起不再按关键词过滤，父记录固定为「全部发言」；`keywords.json` 与 `/keywords` 指令仅作展示兼容）
 - 记录到多维表格：时间、发送人、组别（全部发言）、消息内容、图片
-- 图片真入库：IM `image_key` 不能直接作附件 file_token（飞书限制），自动走「下载消息图片 → 重传多维表格」转存（需应用开通 `im:image`、`drive:file:upload` 权限）；单张转存失败只跳过该张，全部失败降级为**无图记录**，文本/时间/发送人不丢
+- 图片真入库：IM `image_key` 不能直接作附件 file_token（飞书限制），自动走「下载消息图片 → 重传多维表格」转存——下载走消息资源接口 `GET /im/v1/messages/{message_id}/resources/{file_key}`（用户发的图不能用机器人图片下载接口，v101 换道），上传需 `drive:file:upload` 权限；单张转存失败只跳过该张，全部失败降级为**无图记录**，文本/时间/发送人不丢
 - 前端可按分组折叠/展开查看
 - 注意：群里 @机器人的消息走对话链路，不会被本功能记录
 
@@ -442,10 +442,16 @@ node push.js "提交说明"
 ### 测试
 ```bash
 node server/scripts/stub-test-duty-branch.js   # 值日分支 + 关键词回答 + 抽奖链路 stub 测试（不触飞书；含统计归因上报断言：抽奖/关键词回答带 fun 标记、抽奖带 learn 触发词——2026-09-22 活跃口径修正，娱乐功能不计入队员活跃）
-node server/scripts/stub-test-approval-take.js # 审批群裸词「接取」匹配 + 转发契约（senderName/senderId 透传，v113）
+node server/scripts/stub-test-approval-take.js # 审批群裸词「接取」匹配 + 转发契约（senderName/senderId 透传，v115）+ 私聊催办回复词形静默断言（v123）
 node server/scripts/stub-test-workload.js      # 团队负载聚合 stub 测试（时效系数边界/状态折减/owner 加权/多人摊薄/父负责人归并/ticket-bot 拉取降级——2026-09-24）
+node server/scripts/stub-test-ddl-confirm-targeted.js  # DDL 逾期确认定向追问
+node server/scripts/stub-test-ddl-leader.js    # DDL 负责人跨群汇总
+node server/scripts/stub-test-ddl-retry.js     # DDL 逾期确认重试
+node server/scripts/stub-test-ddl-zombie.js    # DDL 僵尸确认清理
+node server/scripts/stub-test-meeting-reminder.js     # 会议提醒
+node server/scripts/stub-test-status-fleet.js  # /status 舰队健康快照
 ```
-`npm run push` 部署前自动跑（测试不过不部署，`SKIP_TESTS=1` 可跳过）；新增行为须带新断言。
+九套（`npm test` / push 闸门 `readdirSync` 自动发现全部桩）。`npm run push` 部署前自动跑（测试不过不部署，`SKIP_TESTS=1` 可跳过）；新增行为须带新断言。
 
 ### 注意事项
 1. 确保飞书应用已开通相应权限
