@@ -12,7 +12,7 @@
 - 五个机器人**共用同一个飞书应用**；长连接只属于 feishu-gateway，本项目事件一律 `FEISHU_USE_LONG_CONNECTION=false`，由网关转发到本项目的 `POST /api/feishu/event`；
 - 指令交互契约：转发业务走 `POST /api/chat/command`，回 `{reply}`（回复由调用方——网关或 hub——代发）。各域载荷不同：approval/bambu 为 `{command, args}`；duty 为 `{command, openId, chatType, chatId?, imageKey?, messageId?, args?}`（图片载荷 `{type:image, openId, imageKey, messageId}`）； ticket-bot 为事件直投（接单例外）；
 - 群播报走群自定义机器人 webhook，对话回复走飞书 IM API；
-- 部署一律项目内 `npm run push "说明"`（规则见 qianli-deploy skill 与顶层 AGENTS.md），NAS 凭证在 .env 的 NAS_*；
+- 部署一律项目内 `npm run push "说明"`（规则见 qianli-deploy skill 与顶层 AGENTS.md），部署凭证在 .env 的 DEPLOY_*；
 - 通用坑：@识别要兼容 mentioned_type='bot'；多维表格字段值先过 fieldText 类工具再拼字符串；express.json 建议放宽到 2mb。
 
 工作区与顶层职能速览（需求跨项目即停，走上方"发错时的规定动作"）：

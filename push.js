@@ -8,17 +8,17 @@
  * 流程：
  *   [1/4] 代码提交推送到 GitHub（失败则标记，稍后改走 SFTP 直传）
  *   [2/4] 部署代码到部署目标（git push 成功走 git fetch，失败走 SFTP 打包直传）
- *   [3/4] 上传 server/.env 到部署目标（含飞书密钥，只单独进 NAS，绝不进 git）
+ *   [3/4] 上传 server/.env 到部署目标（含飞书密钥，只单独进部署目标，绝不进 git）
  *   [4/4] npm install + 重启服务
  *
- * NAS 连接配置从 server/.env 读取（NAS_HOST/NAS_PORT/NAS_USER/NAS_PASSWORD），脚本不存任何密钥。
+ * 部署目标连接配置从 server/.env 读取（DEPLOY_HOST/DEPLOY_PORT/DEPLOY_USER/DEPLOY_PASSWORD），脚本不存任何密钥。
  */
 const { spawnSync } = require('child_process');
 const { Client } = require('ssh2');
 const os = require('os');
 const path = require('path');
 
-// 轻量读取 server/.env 中的 NAS_* 配置（根目录无 dotenv 依赖，不额外安装）
+// 轻量读取 server/.env 中的 DEPLOY_* 配置（根目录无 dotenv 依赖，不额外安装）
 const envText = require('fs').readFileSync(path.join(__dirname, 'server', '.env'), 'utf8');
 // ---------- [0] 部署前测试闸门（2026-09-13 R4）：测试不过不部署；SKIP_TESTS=1 可跳过 ----------
 function runTestGate() {
@@ -47,7 +47,7 @@ function runTestGate() {
 }
 if (!runTestGate()) process.exit(1);
 for (const line of envText.split('\n')) {
-  const m = line.match(/^\s*(NAS_[A-Z_]+)\s*=\s*(.*)\s*$/);
+  const m = line.match(/^\s*(DEPLOY_[A-Z_]+)\s*=\s*(.*)\s*$/);
   if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2].trim();
 }
 
@@ -62,14 +62,14 @@ const REMOTE_DIR_WIN = 'C:/qianli/opt/knowledge-tracker';
 const GIT_REMOTE = 'https://github.com/NepheLoudy/Qianli-Project-Management-Robot.git';
 const PM2_NAME = 'knowledge-tracker';
 
-const nasConfig = {
-  host: process.env.NAS_HOST,
-  port: Number(process.env.NAS_PORT || 22),
-  username: process.env.NAS_USER,
-  password: process.env.NAS_PASSWORD,
+const deployConfig = {
+  host: process.env.DEPLOY_HOST,
+  port: Number(process.env.DEPLOY_PORT || 22),
+  username: process.env.DEPLOY_USER,
+  password: process.env.DEPLOY_PASSWORD,
 };
-if (!nasConfig.host || !nasConfig.password) {
-  console.error('缺少 NAS 部署配置：请在 server/.env 中配置 NAS_HOST/NAS_PORT/NAS_USER/NAS_PASSWORD');
+if (!deployConfig.host || !deployConfig.password) {
+  console.error('缺少部署配置：请在 server/.env 中配置 DEPLOY_HOST/DEPLOY_PORT/DEPLOY_USER/DEPLOY_PASSWORD');
   process.exit(1);
 }
 
@@ -265,15 +265,15 @@ function uploadEnv() {
         conn.end();
         process.exit(1);
       }
-      console.log('✓ server/.env 已上传到部署目标（含飞书密钥，仅存于 NAS）');
+      console.log('✓ server/.env 已上传到部署目标（含飞书密钥，仅存于部署目标）');
       uploadPrivateConfigs(sftp);
     });
   });
 }
 
 // 关键词回答私有覆盖（含真实成员姓名，不进 git；git 路径部署仓库里没有，必须显式 SFTP）。
-// 【运行时数据保护】权威编辑路径在 NAS 侧（运维台定制窗口直写 .local.json），本地是种子：
-// 上传前先备份 NAS 现网版本；本地条目数少于现网时跳过上传（PUSH_FORCE_PRIVATE=1 强制覆盖）。
+// 【运行时数据保护】权威编辑路径在部署目标侧（运维台定制窗口直写 .local.json），本地是种子：
+// 上传前先备份部署目标现网版本；本地条目数少于现网时跳过上传（PUSH_FORCE_PRIVATE=1 强制覆盖）。
 const PRIVATE_DATA_DIR = '/c/home/qianli/knowledge-tracker-data';
 const PRIVATE_DATA_DIR_WIN = 'C:/home/qianli/knowledge-tracker-data';
 
@@ -328,8 +328,8 @@ function uploadPrivateFile(sftp, relPath, done) {
     };
 
     if (remoteCount > localCount && process.env.PUSH_FORCE_PRIVATE !== '1') {
-      console.warn(`⚠ [私有配置保护] 跳过 ${label} 上传：本地 ${localCount} 条 < NAS 现网 ${remoteCount} 条（本地种子过期，权威在 NAS 侧）。`);
-      console.warn('  确认要用本地覆盖请设 PUSH_FORCE_PRIVATE=1 重跑；NAS 现网内容已回填本地以防丢失。');
+      console.warn(`⚠ [私有配置保护] 跳过 ${label} 上传：本地 ${localCount} 条 < 部署目标现网 ${remoteCount} 条（本地种子过期，权威在部署目标侧）。`);
+      console.warn('  确认要用本地覆盖请设 PUSH_FORCE_PRIVATE=1 重跑；部署目标现网内容已回填本地以防丢失。');
       fs.writeFileSync(localPath, remoteContent);
       return done();
     }
@@ -340,7 +340,7 @@ function uploadPrivateFile(sftp, relPath, done) {
           conn.end();
           process.exit(1);
         }
-        console.log(`✓ ${label} 已上传到部署目标（私有配置，仅存于 NAS）`);
+        console.log(`✓ ${label} 已上传到部署目标（私有配置，仅存于部署目标）`);
         done();
       });
     });
@@ -392,4 +392,4 @@ function showStatus() {
 }
 
 console.log('正在连接部署目标...');
-conn.connect(nasConfig);
+conn.connect(deployConfig);
