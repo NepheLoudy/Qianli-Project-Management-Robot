@@ -9,7 +9,9 @@
 const path = require('path');
 const { requestAPI } = require('../server/src/feishu/client');
 
-require('dotenv').config({ path: path.join(__dirname, '..', 'server', '.env') });
+// dotenv 装在 server/node_modules，根 scripts/ 解析不到——锚到 server 包解析
+const serverRequire = require('module').createRequire(path.join(__dirname, '..', 'server', 'package.json'));
+serverRequire('dotenv').config({ path: path.join(__dirname, '..', 'server', '.env') });
 
 const APP_TOKEN = process.env.BITABLE_APP_TOKEN;
 const TABLE_ID = process.env.BITABLE_KEYWORD_TABLE_ID;
