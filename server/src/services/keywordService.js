@@ -23,6 +23,25 @@ function loadKeywordsConfig() {
   }
 }
 
+// 话题清单归一化：去 #、去空白；「#步兵」与「步兵」等价
+function normalizeTopics(keywords) {
+  if (!Array.isArray(keywords)) return [];
+  return keywords
+    .map(k => String(k || '').trim().replace(/^#/, ''))
+    .filter(Boolean);
+}
+
+// 论坛帖子判定（指南 v1.0.0：#话题 开头，话题后跟空格/换行才算）：
+// 返回 { topic, content } 或 null。话题词必须整段命中——「#步兵 冲鸭」算、「#步兵冲鸭」不算。
+function matchTopic(text, topics) {
+  if (!text || topics.length === 0) return null;
+  const m = text.match(/^#(\S+)([\s\S]*)$/);
+  if (!m) return null;
+  const token = m[1];
+  if (!topics.includes(token)) return null;
+  return { topic: token, content: m[2].trim() };
+}
+
 function extractKeywords(text, keywordList) {
   if (!text || !keywordList || keywordList.length === 0) {
     return [];
@@ -266,6 +285,16 @@ async function resolveImageFileTokens(imageKeys, messageId) {
 }
 
 async function processMessageEvent(event) {
+  const kwConfig = loadKeywordsConfig();
+  if (!kwConfig.enabled) {
+    return { skipped: true, reason: '关键词监听已关闭 (keywords.enabled=false)' };
+  }
+  const topics = normalizeTopics(kwConfig.keywords);
+  // 话题清单被清空视为误配置：兜底回全量记录并大声告警，防论坛静默停摆（停记录请用 enabled=false）
+  if (topics.length === 0) {
+    console.warn('[关键词监听] 话题清单为空，兜底回全量记录模式——请检查 keywords.json');
+  }
+
   const message = event.message;
   if (!message) {
     return { skipped: true, reason: '无消息内容' };
@@ -282,6 +311,14 @@ async function processMessageEvent(event) {
   }
 
   const text = extractTextContent(message);
+
+  // 论坛迭代（v125）：仅记录「#话题 + 空格/换行」开头的帖子（对齐论坛机器人使用指南 v1.0.0）
+  const post = topics.length > 0 ? matchTopic(text, topics) : null;
+  if (topics.length > 0 && !post) {
+    console.log('[关键词监听] 非#话题帖子，跳过记录:', text.slice(0, 50));
+    return { skipped: true, reason: '非#话题帖子（仅记录 #话题 开头帖子）' };
+  }
+
   console.log('[关键词监听] 消息文本:', text);
 
   const chatId = message.chat_id;
@@ -295,8 +332,13 @@ async function processMessageEvent(event) {
 
   const childFields = {
     组别: '全部发言',
-    消息内容: text || '(无文本内容)',
+    // 帖子模式：消息内容存去掉话题前缀的正文（话题单列「话题」字段，拼回即原帖）
+    消息内容: post ? (post.content || '(无正文)') : (text || '(无文本内容)'),
   };
+
+  if (post) {
+    childFields['话题'] = post.topic;
+  }
 
   try {
     if (sendTime) {
@@ -315,27 +357,31 @@ async function processMessageEvent(event) {
     }
 
     let childRecord;
-    try {
-      childRecord = await createChildRecord(childFields);
-    } catch (err) {
-      if (!childFields['图片']) {
-        throw err;
+    // 可降级字段（按序剥离）：图片（image_key 非附件 file_token）、话题（线上表未建「话题」字段的部署窗口期）。
+    // 任一字段写失败只剥该字段重写，保住正文/时间/发送人；基础字段（组别/消息内容/时间/发送人）失败不剥，直接抛
+    for (;;) {
+      try {
+        childRecord = await createChildRecord(childFields);
+        break;
+      } catch (err) {
+        const fallbackField = ['图片', '话题'].find(f => childFields[f] !== undefined);
+        if (!fallbackField) {
+          throw err;
+        }
+        console.warn(`[关键词监听] 字段「${fallbackField}」写入失败，降级去除重写:`, err.message);
+        delete childFields[fallbackField];
       }
-      // IM 消息的 image_key 不是附件字段要的 file_token（飞书限制，需下载后重新上传才能入库），
-      // 带图消息此前整条写入失败、文本一起丢——降级为无图记录，保住文本/时间/发送人
-      console.warn('[关键词监听] 图片字段写入失败，降级为无图记录:', err.message);
-      delete childFields['图片'];
-      childRecord = await createChildRecord(childFields);
     }
 
-    console.log(`[关键词监听] 已记录发言 - 用户:${senderId} (父记录: ${childFields['parentId'][0]})`);
+    console.log(`[关键词监听] 已记录${post ? `帖子(#${post.topic})` : '发言'} - 用户:${senderId} (父记录: ${childFields['parentId'][0]})`);
 
     return {
       matched: true,
-      keywords: ['全部发言'],
+      keywords: post ? [post.topic] : ['全部发言'],
+      topic: post ? post.topic : '',
       sender: senderId,
       results: [{
-        keyword: '全部发言',
+        keyword: post ? post.topic : '全部发言',
         success: true,
         parentRecordId: childFields['parentId'][0],
         childRecordId: childRecord.record_id,
@@ -346,10 +392,11 @@ async function processMessageEvent(event) {
     console.error('[关键词监听] 写入的字段:', Object.keys(childFields));
     return {
       matched: true,
-      keywords: ['全部发言'],
+      keywords: post ? [post.topic] : ['全部发言'],
+      topic: post ? post.topic : '',
       sender: senderId,
       results: [{
-        keyword: '全部发言',
+        keyword: post ? post.topic : '全部发言',
         success: false,
         error: err.message,
       }],
@@ -423,6 +470,8 @@ async function getKeywordRecordsWithHierarchy(params = {}) {
 
 module.exports = {
   loadKeywordsConfig,
+  normalizeTopics,
+  matchTopic,
   extractKeywords,
   extractTextContent,
   extractImageKeys,
