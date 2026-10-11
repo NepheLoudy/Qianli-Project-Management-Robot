@@ -437,7 +437,6 @@ const FLEET_SERVICES = [
   { name: 'approval 财务审批', port: 3002 },
   { name: 'ticket 工单', port: 3003 },
   { name: 'duty 值日', port: 3006 },
-  { name: 'wecom 考勤周报', port: 3007 },
 ];
 
 async function probeFleetHealth() {

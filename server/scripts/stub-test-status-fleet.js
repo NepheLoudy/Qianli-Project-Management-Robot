@@ -43,8 +43,8 @@ async function main() {
   const text = lines.join('\n');
 
   assert('标题行存在', lines[0].includes('舰队健康'));
-  assert('7 个服务各占一行', lines.filter((l) => /:\d{4}\)/.test(l)).length === 7);
-  assert('健康服务显示 ✅（抽查 3000/3006/3007）', /✅ hub 对话枢纽\(:3000\)/.test(text) && /✅ duty 值日\(:3006\)/.test(text) && /✅ wecom 考勤周报\(:3007\)/.test(text));
+  assert('6 个服务各占一行', lines.filter((l) => /:\d{4}\)/.test(l)).length === 6);
+  assert('健康服务显示 ✅（抽查 3000/3006）', /✅ hub 对话枢纽\(:3000\)/.test(text) && /✅ duty 值日\(:3006\)/.test(text));
   assert('僵死服务显示 ❌ 无响应（3002）', /❌ approval 财务审批\(:3002\) 无响应/.test(text));
   assert('网关深度行：ws running', /网关长连接：✅ running/.test(text));
   assert('网关深度行：投递计数', /投递计数 ok=42 failed=1/.test(text));

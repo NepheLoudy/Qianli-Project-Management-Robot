@@ -891,3 +891,11 @@
 - **积压条目身份键唯一化**：gateTask/gatePayload 入队签发 crypto.randomUUID()（同 ticket-bot 同毫秒碰撞修复），存量回落旧键；补导出 runFlush（桩测试/运维手动触发用）。
 - 新增 scripts/stub-test-quiet-flush.js（移植版，registerPayloadHandler 注册内存桩处理器，5 场景 10 断言）。npm test（push.js 自发现 11 套）全过。
 - 部署状态：git 先行入库，部署因小电脑离线挂起——上线后重跑 npm run push 补部署，无新版本。
+
+## v127 · 2026-10-12 · 随本提交落地 · chore
+
+**wecom-attendance-bot 项目废止清理联动（顶层 v146 批）**
+
+- `src/services/chatService.js` FLEET_SERVICES 移除 `{ name: 'wecom 考勤周报', port: 3007 }` 条目——项目废止后该端口探测恒 ❌，舰队卡会永久挂一条僵死行；
+- `scripts/stub-test-status-fleet.js` 断言同步：7 行→6 行、健康抽查去 3007 项；
+- 测试：stub 全 11 套重跑全绿（含 status-fleet）；部署待小电脑上线随批补跑。
