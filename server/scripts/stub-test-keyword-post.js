@@ -6,7 +6,7 @@
  * 判定规则：消息以 #话题 开头且话题后跟空格/换行才算（「#步兵 冲鸭」算，「#步兵冲鸭」不算）。
  * 本测试锁定：话题解析边界、清单归一化、非帖子跳过、帖子的字段落表（话题/正文）、
  * 带图帖子图片转存、话题字段写失败降级（线上表未建字段的部署窗口期）、enabled=false 关闭、
- * 全群特例（v127：#小贴士 不限目标群，正文+图片同条消息一并入库，作用域闸门放行矩阵）。
+ * 全群特例（v128：#小贴士 不限目标群，正文+图片同条消息一并入库，作用域闸门放行矩阵）。
  * 运行：node scripts/stub-test-keyword-post.js
  */
 
@@ -167,7 +167,7 @@ async function testProcess() {
   assert('同 message_id 去重', r.skipped === true && captured.records.length === cntAfterDup);
 }
 
-// ---- 全群特例断言（v127：#小贴士 不限目标群） ----
+// ---- 全群特例断言（v128：#小贴士 不限目标群） ----
 function tipPostMessage(chatId, messageId) {
   return {
     chat_id: chatId, message_id: messageId, message_type: 'post',
