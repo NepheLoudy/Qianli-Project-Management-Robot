@@ -20,7 +20,7 @@ if (!APP_TOKEN || !TABLE_ID) {
   process.exit(1);
 }
 
-// 与 server/src/config/keywords.json 的论坛话题清单一致（含 v127 全群特例 #小贴士）
+// 与 server/src/config/keywords.json 的论坛话题清单一致（含 v128 全群特例 #小贴士）
 const TOPICS = ['重装', '步兵', '空中', '飞镖', '征集', '实验', '分享', '讨论', '基建', '哨兵', '运营', '答疑', '小贴士'];
 
 async function listFields() {
