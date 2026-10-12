@@ -42,6 +42,31 @@ function matchTopic(text, topics) {
   return { topic: token, content: m[2].trim() };
 }
 
+// 全群特例话题（2026-10-12）：这些话题不限于 KEYWORD_CHAT_ID 目标群，任意群命中都放行落表。
+// 仍要求「#话题 + 空格/换行」开头；正文与图片须在同一条消息里（富文本帖）才一并入库。
+const GLOBAL_TOPICS = ['小贴士'];
+
+// 判定一条消息是否命中全群特例话题：命中返回 { topic, content }，否则 null
+function matchGlobalScopeTopic(message) {
+  try {
+    const kwConfig = loadKeywordsConfig();
+    if (!kwConfig.enabled) return null;
+    const topics = normalizeTopics(kwConfig.keywords);
+    if (topics.length === 0) return null;
+    const post = matchTopic(extractTextContent(message), topics);
+    return post && GLOBAL_TOPICS.includes(post.topic) ? post : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+// 关键词监听作用域闸门：未配 KEYWORD_CHAT_ID=全群；配置后仅目标群，
+// 全群特例话题（#小贴士）在任意群放行（供事件订阅层在进服务前分流）
+function inKeywordScope(chatId, message) {
+  if (!config.keyword.chatId || chatId === config.keyword.chatId) return true;
+  return !!matchGlobalScopeTopic(message);
+}
+
 function extractKeywords(text, keywordList) {
   if (!text || !keywordList || keywordList.length === 0) {
     return [];
@@ -472,6 +497,9 @@ module.exports = {
   loadKeywordsConfig,
   normalizeTopics,
   matchTopic,
+  GLOBAL_TOPICS,
+  matchGlobalScopeTopic,
+  inKeywordScope,
   extractKeywords,
   extractTextContent,
   extractImageKeys,

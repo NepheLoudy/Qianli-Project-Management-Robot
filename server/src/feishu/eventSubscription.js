@@ -65,8 +65,9 @@ async function handleMessageEvent(data) {
       console.log('[事件订阅] 关键词自动回复命中:', autoResult.keywords.join('/'), autoResult.replied ? '已回复' : '回复失败');
     }
 
-    // 关键词监听：如果配置了 KEYWORD_CHAT_ID，则只处理指定群的消息
-    if (!config.keyword.chatId || chatId === config.keyword.chatId) {
+    // 关键词监听：如果配置了 KEYWORD_CHAT_ID，则只处理指定群的消息；
+    // #小贴士 为全群特例（2026-10-12）：任意群的 #小贴士 帖子都放行落表（正文+图片须同条消息）
+    if (keywordService.inKeywordScope(chatId, data.message)) {
       const kwResult = await keywordService.processMessageEvent(data);
       if (kwResult.skipped) {
         console.log('[事件订阅] 跳过:', kwResult.reason);

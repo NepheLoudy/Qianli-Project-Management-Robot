@@ -5,7 +5,8 @@
  * 千里论坛群从「全量发言记录」改为「仅记录 #话题 开头帖子」，话题写入表格「话题」字段。
  * 判定规则：消息以 #话题 开头且话题后跟空格/换行才算（「#步兵 冲鸭」算，「#步兵冲鸭」不算）。
  * 本测试锁定：话题解析边界、清单归一化、非帖子跳过、帖子的字段落表（话题/正文）、
- * 带图帖子图片转存、话题字段写失败降级（线上表未建字段的部署窗口期）、enabled=false 关闭。
+ * 带图帖子图片转存、话题字段写失败降级（线上表未建字段的部署窗口期）、enabled=false 关闭、
+ * 全群特例（v127：#小贴士 不限目标群，正文+图片同条消息一并入库，作用域闸门放行矩阵）。
  * 运行：node scripts/stub-test-keyword-post.js
  */
 
@@ -71,8 +72,8 @@ function reset() {
 // ---- matchTopic 单元断言 ----
 function testMatchTopic() {
   console.log('# matchTopic 判定边界');
-  const topics = kw.normalizeTopics(['#重装', '#步兵', '#空中', '#飞镖', '#征集', '#实验', '#分享', '#讨论', '#基建', '#哨兵', '#运营', '#答疑']);
-  assert('清单归一化去 # 12 项', topics.length === 12 && topics.includes('步兵') && !topics.includes('#步兵'));
+  const topics = kw.normalizeTopics(['#重装', '#步兵', '#空中', '#飞镖', '#征集', '#实验', '#分享', '#讨论', '#基建', '#哨兵', '#运营', '#答疑', '#小贴士']);
+  assert('清单归一化去 # 13 项', topics.length === 13 && topics.includes('步兵') && topics.includes('小贴士') && !topics.includes('#步兵'));
 
   let r = kw.matchTopic('#步兵 冲鸭', topics);
   assert('「#步兵 空格」判定为帖子', !!r && r.topic === '步兵' && r.content === '冲鸭');
@@ -90,6 +91,8 @@ function testMatchTopic() {
   assert('新增话题 #重装 可判定', !!r && r.topic === '重装');
   r = kw.matchTopic('#答疑', topics);
   assert('新增话题 #答疑 可判定', !!r && r.topic === '答疑');
+  r = kw.matchTopic('#小贴士 记得给电池放电', topics);
+  assert('新增话题 #小贴士 可判定', !!r && r.topic === '小贴士' && r.content === '记得给电池放电');
   r = kw.matchTopic('', topics);
   assert('空文本不算帖子', r === null);
   r = kw.matchTopic('#步兵 双话题 #讨论', topics);
@@ -164,9 +167,63 @@ async function testProcess() {
   assert('同 message_id 去重', r.skipped === true && captured.records.length === cntAfterDup);
 }
 
+// ---- 全群特例断言（v127：#小贴士 不限目标群） ----
+function tipPostMessage(chatId, messageId) {
+  return {
+    chat_id: chatId, message_id: messageId, message_type: 'post',
+    content: JSON.stringify({ zh_cn: { content: [[{ tag: 'text', text: '#小贴士 ' }, { tag: 'text', text: '苏打水除锈' }], [{ tag: 'img', image_key: 'img_key_tip' }]] } }),
+  };
+}
+function scopeEvent(message) {
+  return { message, sender: { sender_id: { open_id: 'ou_a' } } };
+}
+function textMessage(chatId, messageId, text) {
+  return { chat_id: chatId, message_id: messageId, message_type: 'text', content: JSON.stringify({ text }) };
+}
+
+async function testGlobalScope() {
+  console.log('# 全群特例（#小贴士）作用域');
+
+  let m = kw.matchGlobalScopeTopic(tipPostMessage('oc_other', 'g0'));
+  assert('非目标群 #小贴士 命中全群特例', !!m && m.topic === '小贴士' && m.content === '苏打水除锈');
+  m = kw.matchGlobalScopeTopic(textMessage('oc_other', 'g1', '#步兵 冲鸭'));
+  assert('非特例话题不触发全群放行', m === null);
+  m = kw.matchGlobalScopeTopic(textMessage('oc_other', 'g2', '今天食堂真难吃'));
+  assert('普通闲聊不触发全群放行', m === null);
+  m = kw.matchGlobalScopeTopic({
+    chat_id: 'oc_other', message_id: 'g3', message_type: 'image',
+    content: JSON.stringify({ image_key: 'k' }),
+  });
+  assert('纯图消息无文本不触发', m === null);
+  m = kw.matchGlobalScopeTopic(textMessage('oc_other', 'g4', '#小贴士补签小心机'));
+  assert('话题词后无分隔（#小贴士补签小心机）不算特例', m === null);
+
+  // inKeywordScope 放行矩阵：目标群=oc_forum
+  const cfgStub = require.cache[require.resolve('../src/config')].exports;
+  cfgStub.keyword.chatId = 'oc_forum';
+  assert('目标群任意消息都在作用域', kw.inKeywordScope('oc_forum', tipPostMessage('oc_forum', 'g5')) === true);
+  assert('非目标群普通消息不在作用域', kw.inKeywordScope('oc_other', textMessage('oc_other', 'g6', '闲聊')) === false);
+  assert('非目标群 #步兵 帖子仍限论坛群', kw.inKeywordScope('oc_other', textMessage('oc_other', 'g7', '#步兵 冲鸭')) === false);
+  assert('非目标群 #小贴士 帖子放行', kw.inKeywordScope('oc_other', tipPostMessage('oc_other', 'g8')) === true);
+  cfgStub.keyword.chatId = '';
+  assert('未配 KEYWORD_CHAT_ID 全群在作用域', kw.inKeywordScope('oc_random', textMessage('oc_random', 'g9', '闲聊')) === true);
+  cfgStub.keyword.chatId = 'oc_forum';
+
+  // 端到端：非论坛群的 #小贴士 富文本帖（正文+图片同条消息）全量落表
+  reset();
+  cfgStub.keyword.chatId = '';
+  const r = await kw.processMessageEvent(scopeEvent(tipPostMessage('oc_other', 'g10')));
+  const child = captured.records.find(f => f['话题'] !== undefined);
+  assert('全群 #小贴士 帖子入库', r.matched === true && !!child && child['话题'] === '小贴士');
+  assert('下辖正文入库', child['消息内容'] === '苏打水除锈');
+  assert('同条消息图片一并入库', Array.isArray(child['图片']) && child['图片'][0].file_token === 'file_token_stub');
+  cfgStub.keyword.chatId = 'oc_forum';
+}
+
 async function main() {
   testMatchTopic();
   await testProcess();
+  await testGlobalScope();
   console.log(failed === 0 ? '\nALL PASS' : `\n${failed} FAILED`);
   process.exit(failed === 0 ? 0 : 1);
 }
