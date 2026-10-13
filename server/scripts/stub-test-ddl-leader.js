@@ -1,14 +1,15 @@
-// 桩测试：DDL 播报·负责人群整合播报——每日播报时把「逾期 + 临期」跨播报群汇总
-// 再在负责人群播一遍，卡头 @ 指定负责人（2026-09-22 用户需求）。
-// 全离线：项目数据走 preloadedProjects 入口，飞书发送/确认/工单桶全部注入桩，
-// 广场写表用 PLAZA_ENABLED 停写隔离，播报状态文件外移临时目录。
-// 锁定行为：
+// 桩测试：DDL 播报·负责人群整合播报——把「逾期 + 临期」跨播报群汇总再在负责人群
+// 播一遍，卡头 @ 指定负责人（2026-09-22 用户需求）。全离线：项目数据走 preloadedProjects
+// 入口，飞书发送/确认/工单桶全部注入桩，广场写表用 PLAZA_ENABLED 停写隔离，播报状态文件外移临时目录。
+// 2026-10-13 拆分（曼波需求：逾期汇总提前到 10 点）：整合卡独立 runLeaderBroadcast
+// 定时发送（LEADER_CRON_SCHEDULE，默认 10:00），不再随 12:05 主播报。锁定行为：
 //  1) 整合口径 = filter 'all'（各人员字段并集）：只在 dkyj 字段有人的项目也进负责人群卡
 //  2) 卡头 @ 指定负责人：open_id 进卡片 <at id> 标签（卡片 @ 语法）
 //  3) 只含逾期/临期两栏：周概览项目、工单分栏、语录不上负责人群卡
 //  4) 逾期+临期全空当日不发送（负责人群只收升级事项，各群常规卡照发）
-//  5) 负责人群 webhook/chat_id 与播报群重复时跳过，防同群双卡
-//  6) 负责人群发送失败（业务性错误）：群卡已送达结果不回滚，当日标记不落盘（可手动重跑）
+//  5) 主播报（12:05）不再发负责人群卡；负责人任务（10:00）不发各群卡/不发逾期确认私聊
+//  6) 双当日标记互相独立：leader 标记不得阻塞主播报（反之亦然），状态文件字段合并不互抹
+//  7) 负责人任务发送失败（业务性错误）：向上抛出、当日标记不落盘（可手动重跑）
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
@@ -174,49 +175,66 @@ ok(yoloLine && !yoloLine.includes('未指派') && yoloLine.includes('ou_sj_hh'),
     if (fs.existsSync(STATE_FILE)) fs.unlinkSync(STATE_FILE);
     return require(cronPath);
   };
-  const todayStateExists = () => fs.existsSync(STATE_FILE);
+  const readState = () => (fs.existsSync(STATE_FILE) ? JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8')) : {});
 
-  console.log('== stub-test-ddl-leader · 播报主流程（负责人群配置齐全） ==');
+  console.log('== stub-test-ddl-leader · 主播报（12:05，负责人卡已拆出） ==');
   const cron1 = freshCron();
   await cron1.runDDLBroadcast();
-  ok(groupSendCalls.length === 2 && groupSendCalls.every(c => c[4] && c[4].webhookUrl), '各播报群常规卡各发一张（不受负责人群影响）');
+  ok(groupSendCalls.length === 2 && groupSendCalls.every(c => c[4] && c[4].webhookUrl), '各播报群常规卡各发一张');
+  ok(leaderSendCalls.length === 0, '主播报不再发送负责人群整合卡（2026-10-13 拆分）');
+  ok(readState().lastBroadcastDate === new Date().toLocaleDateString('zh-CN'), '群卡送达即落当日主播报标记');
+  ok(readState().lastLeaderBroadcastDate === undefined, '主播报不写负责人任务标记');
+  ok(confirmCalls.length >= 1, '逾期确认私聊仍随主播报发送');
+  const hist1 = cron1.getBroadcastHistory()[0];
+  ok(hist1.success === true && !hist1.groups.some(g => g.label === '负责人群'), '主播报历史不含负责人群统计');
+
+  console.log('== stub-test-ddl-leader · 负责人整合任务（10:00）正常发送 ==');
+  const today = new Date().toLocaleDateString('zh-CN');
+  const cron2 = freshCron();
+  const r2 = await cron2.runLeaderBroadcast();
   ok(leaderSendCalls.length === 1, '负责人群整合卡发送一次');
   ok(leaderSendCalls[0].leader.mentionOpenId === 'ou_leader_zhang', '发送时携带卡头 @ 配置');
-  ok(walkNames(leaderSendCalls[0].overdue).includes('仅电控组项目') || walkNames(leaderSendCalls[0].urgent).includes('仅电控组项目'), '整合口径在主流程生效（跨字段并集）');
-  ok(todayStateExists(), '负责人群送达计入「今日已播报」标记');
-  ok(confirmCalls.length >= 1, '逾期确认私聊链路不受影响');
-  const hist1 = cron1.getBroadcastHistory()[0];
-  ok(hist1.success === true && hist1.groups.some(g => g.label === '负责人群'), '播报历史含负责人群统计');
+  ok(walkNames(leaderSendCalls[0].overdue).includes('仅电控组项目') || walkNames(leaderSendCalls[0].urgent).includes('仅电控组项目'), '整合口径在独立任务生效（跨字段并集）');
+  ok(r2 && r2.sent === true && r2.overdue === 2 && r2.urgent === 1, '返回值带发送结果与统计（逾期2 临期1）');
+  ok(groupSendCalls.length === 2, '负责人任务不发各群常规卡');
+  ok(confirmCalls.length >= 1 && !confirmCalls.includes('远期项目'), '负责人任务不发逾期确认私聊');
+  ok(readState().lastLeaderBroadcastDate === today && readState().lastBroadcastDate === undefined, '负责人任务落自己的当日标记');
+  const again = await cron2.runLeaderBroadcast();
+  ok(again === null, '当日已发送过再次触发返回 null 跳过');
+  const hist2 = cron2.getBroadcastHistory()[0];
+  ok(hist2.type === 'ddl_leader_broadcast' && hist2.success === true, '负责人任务历史独立成条（ddl_leader_broadcast）');
 
-  console.log('== stub-test-ddl-leader · 负责人群与播报群目标重复 ==');
-  config.ddl.leaderGroup = { ...config.ddl.leaderGroup, webhookUrl: 'https://hook/owner' };
-  const cron2 = freshCron();
-  await cron2.runDDLBroadcast();
-  ok(leaderSendCalls.length === 1, '目标重复时跳过负责人群整合卡');
-  ok(groupSendCalls.length === 4, '各群常规卡照发（2群 × 2轮）');
-
-  console.log('== stub-test-ddl-leader · 逾期临期全空 ==');
-  config.ddl.leaderGroup = { ...config.ddl.leaderGroup, webhookUrl: 'https://hook/leader' };
+  console.log('== stub-test-ddl-leader · 逾期临期全空（不发卡但计完成） ==');
   projectServiceStub.getProjects = async () => [
     proj('P_FAR', { name: '远期项目', ddl: d(30), owner: 'ou_a', ownerName: '张三' }),
   ];
   const cron3 = freshCron();
-  await cron3.runDDLBroadcast();
+  const r3 = await cron3.runLeaderBroadcast();
   ok(leaderSendCalls.length === 1, '逾期临期全空当日不发送负责人群卡');
-  ok(groupSendCalls.length === 6, '全空日各群常规卡照发（+2）');
+  ok(r3 && r3.sent === false, '全空返回 sent:false');
+  ok(readState().lastLeaderBroadcastDate === today, '全空也算完成，落当日标记（防重复触发）');
+  await cron3.runDDLBroadcast();
+  ok(groupSendCalls.length === 4, '负责人标记不阻塞 12:05 主播报（标记互相独立）');
+  ok(readState().lastBroadcastDate === today && readState().lastLeaderBroadcastDate === today, '双标记同日共存、字段合并不互抹');
 
-  console.log('== stub-test-ddl-leader · 负责人群发送失败（业务性错误，不重试） ==');
+  console.log('== stub-test-ddl-leader · 负责人发送失败（业务性错误，不重试） ==');
   projectServiceStub.getProjects = async () => TEST_PROJECTS;
   leaderFailOnce = true;
   const cron4 = freshCron();
   let rejected = null;
-  try { await cron4.runDDLBroadcast(); } catch (err) { rejected = err; }
+  try { await cron4.runLeaderBroadcast(); } catch (err) { rejected = err; }
   ok(rejected && /9499/.test(rejected.message), '业务性失败向上抛出（不静默吞掉）');
-  ok(groupSendCalls.length === 8, '群卡先于负责人群卡送达且不重发（2群 × 1次）');
-  ok(leaderSendCalls.length === 1, '负责人群失败未被计入送达');
-  ok(!todayStateExists(), '负责人群未送达则当日标记不落盘（可手动重跑）');
+  ok(leaderSendCalls.length === 1, '失败的那次发送不计入送达（桩抛错前不入列）');
+  ok(readState().lastLeaderBroadcastDate === undefined && readState().lastBroadcastDate === undefined, '负责人任务失败不落任何标记（可手动重跑）');
   const hist4 = cron4.getBroadcastHistory()[0];
-  ok(hist4 && hist4.success === false, '失败记录进播报历史');
+  ok(hist4 && hist4.success === false && hist4.type === 'ddl_leader_broadcast', '失败记录进负责人任务历史');
+
+  console.log('== stub-test-ddl-leader · 负责人 webhook 与播报群同址（拆分后语义） ==');
+  config.ddl.leaderGroup = { ...config.ddl.leaderGroup, webhookUrl: 'https://hook/owner' };
+  const cron5 = freshCron();
+  const r5 = await cron5.runLeaderBroadcast();
+  ok(leaderSendCalls.length === 2 && r5.sent === true, '拆分后同址不再跳过（10:00 与 12:05 不同轮次，无同轮双卡可防）');
+  ok(groupSendCalls.length === 4, '同址场景各群卡计数不受影响');
 
   fs.existsSync(STATE_FILE) && fs.unlinkSync(STATE_FILE);
   console.log(`\n结果：${pass} 通过 / 0 失败`);

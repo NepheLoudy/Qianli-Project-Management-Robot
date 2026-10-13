@@ -3,7 +3,7 @@ const cors = require('cors');
 const crypto = require('crypto');
 const config = require('./config');
 const projectService = require('./services/projectService');
-const { startCronJobs, runDDLBroadcast, getBroadcastHistory, getCronStatus } = require('./cron');
+const { startCronJobs, runDDLBroadcast, runLeaderBroadcast, getBroadcastHistory, getCronStatus } = require('./cron');
 const logService = require('./services/logService');
 const keywordService = require('./services/keywordService');
 const autoReplyService = require('./services/autoReplyService');
@@ -114,6 +114,24 @@ app.post('/api/bot/test-broadcast', requireApiToken, async (req, res) => {
     res.json({ success: true, result });
   } catch (err) {
     console.error('测试播报失败:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/bot/test-leader-broadcast', requireApiToken, async (req, res) => {
+  try {
+    const result = await runLeaderBroadcast();
+    if (result === null) {
+      return res.json({
+        success: true,
+        skipped: true,
+        message: '今日负责人群整合卡已发送过（或功能未配置），未重复发送',
+        result: null,
+      });
+    }
+    res.json({ success: true, result });
+  } catch (err) {
+    console.error('负责人群整合播报手动重跑失败:', err);
     res.status(500).json({ error: err.message });
   }
 });

@@ -23,23 +23,32 @@ function loadBroadcastState() {
   try {
     if (fs.existsSync(STATE_FILE)) {
       const data = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
-      return data.lastBroadcastDate || null;
+      return {
+        lastBroadcastDate: data.lastBroadcastDate || null,
+        // 负责人群整合卡独立当日标记（2026-10-13 拆分）：与主播报互不阻塞、互不去重
+        lastLeaderBroadcastDate: data.lastLeaderBroadcastDate || null,
+      };
     }
   } catch (err) {
     console.warn('[DDL播报] 读取状态文件失败:', err.message);
   }
-  return null;
+  return { lastBroadcastDate: null, lastLeaderBroadcastDate: null };
 }
 
-function saveBroadcastState(date) {
+function saveBroadcastState(fields) {
   try {
-    fs.writeFileSync(STATE_FILE, JSON.stringify({ lastBroadcastDate: date }));
+    const current = fs.existsSync(STATE_FILE)
+      ? JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'))
+      : {};
+    fs.writeFileSync(STATE_FILE, JSON.stringify({ ...current, ...fields }));
   } catch (err) {
     console.warn('[DDL播报] 写入状态文件失败:', err.message);
   }
 }
 
-let lastBroadcastDate = loadBroadcastState();
+const broadcastState = loadBroadcastState();
+let lastBroadcastDate = broadcastState.lastBroadcastDate;
+let lastLeaderBroadcastDate = broadcastState.lastLeaderBroadcastDate;
 
 const RETRY_CONFIG = {
   maxAttempts: 3,
@@ -87,12 +96,10 @@ async function runDDLBroadcast() {
 
   console.log('[DDL播报] 开始执行每日DDL播报...');
 
-  let attempt = 0;
-  let lastError = null;
-  // 已成功发送的群（跨重试持久）：重试只补发失败的群，避免已发过的群收到重复卡片
-  const deliveredGroups = new Set();
-  // 负责人群整合卡是否已送达（跨重试持久，语义同 deliveredGroups）
-  let leaderDelivered = false;
+      let attempt = 0;
+      let lastError = null;
+      // 已成功发送的群（跨重试持久）：重试只补发失败的群，避免已发过的群收到重复卡片
+      const deliveredGroups = new Set();
 
   while (attempt < RETRY_CONFIG.maxAttempts) {
     attempt++;
@@ -176,39 +183,15 @@ async function runDDLBroadcast() {
         console.warn('[DDL播报] 未配置任何播报群 webhook，跳过群播报');
       }
 
-      // 负责人群整合播报（2026-09-22）：把「逾期 + 临期（alertDays 内）」跨播报群汇总
-      // 再播一遍，卡头 @ 指定负责人。filter='all' 不按人员字段过滤（即各群播报内容并集）；
-      // 两栏全空时跳过——负责人群只收升级事项，不重复每日空报告。
-      // 与各群同一轮重试：群卡已送达的不受影响（deliveredGroups/leaderDelivered 各自去重）
-      const leader = config.ddl.leaderGroup;
-      if (leader && (leader.webhookUrl || leader.chatId) && !leaderDelivered) {
-        const duplicatedWithGroup = (leader.webhookUrl && seenWebhooks.has(leader.webhookUrl))
-          || (leader.chatId && seenChatIds.has(leader.chatId));
-        if (duplicatedWithGroup) {
-          console.warn(`[DDL播报] ${leader.label} 的 webhook/群聊ID 与播报群重复，跳过整合播报`);
-          leaderDelivered = true; // 视为已覆盖，重试不再反复告警
-        } else {
-          const leaderData = await projectService.getDDLForBroadcastWithHierarchy('all', allProjects);
-          const leaderOverdue = countQualified(leaderData.overdue);
-          const leaderUrgent = countQualified(leaderData.urgent);
-          if (leaderOverdue === 0 && leaderUrgent === 0) {
-            console.log(`[DDL播报] ${leader.label}：无逾期/临期项目，跳过整合播报`);
-          } else {
-            await sendLeaderDDLReport(leaderData.overdue, leaderData.urgent, leader);
-            leaderDelivered = true;
-            deliveredGroups.add(`leader:${leader.webhookUrl || leader.chatId}`);
-            groupStats.push({ label: leader.label, overdue: leaderOverdue, urgent: leaderUrgent, week: 0 });
-            console.log(`[DDL播报] ${leader.label} 整合播报完成 - 逾期:${leaderOverdue} 临期:${leaderUrgent}`);
-          }
-        }
-      }
+      // 负责人群整合卡已拆为独立 10:00 定时任务（2026-10-13 曼波需求：逾期汇总提前到 10 点），
+      // 不再随主播报发送——见下方 runLeaderBroadcast
 
       // 今日标记：至少一群送达后才落盘。不能提前标记——提前落盘后当天发送全败
       // 也不会再重试，播报会静默丢失。全部失败时当天可手动 /test-broadcast 重跑；
       // 部分成功的补发用各群 /test-ddl（它不受本标记限制）
       if (deliveredGroups.size > 0) {
         lastBroadcastDate = today;
-        saveBroadcastState(today);
+        saveBroadcastState({ lastBroadcastDate: today });
         plaza.append({
           event: 'DDL 播报',
           title: `DDL 播报送达 ${deliveredGroups.size} 群：逾期 ${groupStats[0]?.overdue ?? 0} · 紧急 ${groupStats[0]?.urgent ?? 0} · 本周 ${groupStats[0]?.week ?? 0}`,
@@ -287,12 +270,103 @@ async function runDDLBroadcast() {
   throw lastError;
 }
 
+// 负责人群整合播报（2026-09-22 上线；2026-10-13 拆为独立 10:00 定时）：把「逾期 + 临期
+// （alertDays 内）」跨播报群汇总（filter='all' 全量口径，即各群播报内容并集）播给负责人群，
+// 卡头 @ 指定负责人。两栏全空时跳过——负责人群只收升级事项，不重复每日空报告。
+// 独立当日标记 lastLeaderBroadcastDate：与 12:05 主播报互不阻塞、互不去重；
+// 重试同主播报口径（限频 + 瞬时网络错误指数退避，最多 3 次）
+async function runLeaderBroadcast() {
+  const today = new Date().toLocaleDateString('zh-CN');
+  if (lastLeaderBroadcastDate === today) {
+    console.log('[负责人整合] 今日已发送过，跳过重复触发');
+    return null;
+  }
+
+  const leader = config.ddl.leaderGroup;
+  if (!leader || !(leader.webhookUrl || leader.chatId)) {
+    console.log('[负责人整合] 未配置负责人群 webhook/chat_id，功能关闭');
+    return null;
+  }
+
+  console.log('[负责人整合] 开始执行负责人群整合播报...');
+
+  let attempt = 0;
+  let lastError = null;
+  let leaderDelivered = false;
+  let stats = { overdue: 0, urgent: 0 };
+
+  while (attempt < RETRY_CONFIG.maxAttempts) {
+    attempt++;
+    try {
+      if (!leaderDelivered) {
+        const allProjects = await projectService.getProjects();
+        const leaderData = await projectService.getDDLForBroadcastWithHierarchy('all', allProjects);
+        stats = {
+          overdue: countQualified(leaderData.overdue),
+          urgent: countQualified(leaderData.urgent),
+        };
+
+        if (stats.overdue === 0 && stats.urgent === 0) {
+          console.log(`[负责人整合] ${leader.label}：无逾期/临期项目，跳过发送`);
+        } else {
+          await sendLeaderDDLReport(leaderData.overdue, leaderData.urgent, leader);
+          leaderDelivered = true;
+          console.log(`[负责人整合] ${leader.label} 整合播报完成 - 逾期:${stats.overdue} 临期:${stats.urgent}`);
+        }
+      }
+
+      // 当日标记：发送成功或确认全空都算完成（防 cron 重复触发双发）；
+      // 全部重试失败不落盘，次日 10:00 重跑或手动 POST /api/bot/test-leader-broadcast
+      lastLeaderBroadcastDate = today;
+      saveBroadcastState({ lastLeaderBroadcastDate: today });
+
+      broadcastHistory.unshift({
+        time: new Date().toISOString(),
+        type: 'ddl_leader_broadcast',
+        groups: [{ label: leader.label, overdue: stats.overdue, urgent: stats.urgent, week: 0, sent: leaderDelivered }],
+        success: true,
+        attempts: attempt,
+      });
+      if (broadcastHistory.length > 50) broadcastHistory.length = 50;
+
+      return { sent: leaderDelivered, ...stats };
+    } catch (err) {
+      lastError = err;
+      if (isFrequencyLimitError(err)) {
+        const delay = Math.min(RETRY_CONFIG.initialDelay * Math.pow(2, attempt - 1), RETRY_CONFIG.maxDelay);
+        console.warn(`[负责人整合] 第 ${attempt} 次尝试失败，频率限制，将在 ${delay / 1000} 秒后重试...`);
+        await sleep(delay);
+      } else if (isTransientNetworkError(err) && attempt < RETRY_CONFIG.maxAttempts) {
+        const delay = Math.min(RETRY_CONFIG.initialDelay * Math.pow(2, attempt - 1), RETRY_CONFIG.maxDelay);
+        console.warn(`[负责人整合] 第 ${attempt} 次尝试失败，网络瞬时错误，将在 ${delay / 1000} 秒后重试...`);
+        await sleep(delay);
+      } else {
+        console.error('[负责人整合] 播报失败:', err);
+        break;
+      }
+    }
+  }
+
+  broadcastHistory.unshift({
+    time: new Date().toISOString(),
+    type: 'ddl_leader_broadcast',
+    error: lastError?.message || 'Unknown error',
+    success: false,
+    attempts: attempt,
+  });
+  throw lastError;
+}
+
 let ddlTask = null;
+let leaderTask = null;
 
 function startCronJobs() {
   if (ddlTask) {
     console.log('[定时任务] 定时任务已存在，先停止旧任务');
     ddlTask.stop();
+  }
+  if (leaderTask) {
+    leaderTask.stop();
   }
 
   ddlTask = cron.schedule(config.cron.schedule, () => {
@@ -306,15 +380,28 @@ function startCronJobs() {
     timezone: 'Asia/Shanghai',
   });
 
+  // 负责人群整合卡独立调度（2026-10-13）：默认 10:00，先于 12:05 各群常规卡送达；
+  // 同样过晚间静默闸门（窗口内积压、09:00 冲刷时以最新数据重查——夜里收尾的项目不再上报）
+  leaderTask = cron.schedule(config.cron.leaderSchedule, () => {
+    console.log('[定时任务] 触发负责人群整合播报');
+    quietHours.gateTask('ddl_leader_broadcast', quietHours.shanghaiStamp(), runLeaderBroadcast, '负责人整合播报').catch(err => {
+      console.error('[定时任务] 负责人整合播报失败:', err.message);
+    });
+  }, {
+    timezone: 'Asia/Shanghai',
+  });
+
   console.log(`[定时任务] DDL播报已启动，调度规则: ${config.cron.schedule} (Asia/Shanghai)`);
+  console.log(`[定时任务] 负责人整合播报已启动，调度规则: ${config.cron.leaderSchedule} (Asia/Shanghai)`);
   console.log(`[定时任务] 当前时间: ${new Date().toLocaleString('zh-CN')}`);
-  console.log(`[定时任务] 下次执行时间: ${getNextExecutionTime(config.cron.schedule)}`);
+  console.log(`[定时任务] 下次执行时间: 主播报 ${getNextExecutionTime(config.cron.schedule)} / 负责人整合 ${getNextExecutionTime(config.cron.leaderSchedule)}`);
 
   // 晚间静默：注册积压任务的冲刷执行器，并按启动时点调度积压补跑（有积压才调度）
   quietHours.registerTask('ddl_broadcast', runDDLBroadcast);
+  quietHours.registerTask('ddl_leader_broadcast', runLeaderBroadcast);
   quietHours.initQuietHoursFlush();
 
-  return { ddlTask };
+  return { ddlTask, leaderTask };
 }
 
 function getNextExecutionTime(schedule) {
@@ -342,6 +429,11 @@ function getCronStatus() {
     running: !!ddlTask,
     schedule: config.cron.schedule,
     nextExecution: getNextExecutionTime(config.cron.schedule),
+    leader: {
+      running: !!leaderTask,
+      schedule: config.cron.leaderSchedule,
+      nextExecution: getNextExecutionTime(config.cron.leaderSchedule),
+    },
     quietHours: quietHours.getStatus(),
   };
 }
@@ -353,6 +445,7 @@ function getBroadcastHistory() {
 module.exports = {
   startCronJobs,
   runDDLBroadcast,
+  runLeaderBroadcast,
   getBroadcastHistory,
   getCronStatus,
   isFrequencyLimitError,

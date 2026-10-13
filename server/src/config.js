@@ -101,11 +101,14 @@ module.exports = {
     // 默认 12:05（2026-09-19 起）：与 duty-bot 12:00 值日看板播报错峰——两者同秒拉
     // bitable 会互踢 429 TooManyRequest（09-18 12:00 当日 DDL 播报整轮被限频炸掉）
     schedule: process.env.CRON_SCHEDULE || '0 5 12 * * *',
+    // 负责人群整合卡独立调度（2026-10-13 拆分）：默认 10:00，赶在各群 12:05 常规卡之前
+    // 让负责人先看到逾期+临期升级事项（曼波 2026-10-13 需求：逾期汇总提前到 10 点）
+    leaderSchedule: process.env.LEADER_CRON_SCHEDULE || '0 0 10 * * *',
   },
   ddl: {
     alertDays: parseInt(process.env.DDL_ALERT_DAYS || '2', 10),
-    // 负责人群整合播报（2026-09-22）：每日 DDL 播报时把「逾期 + 临期（alertDays 内）」
-    // 跨播报群汇总后再播一遍（filter=all 全量口径，不分人员字段），卡头 @ 指定负责人。
+    // 负责人群整合播报（2026-09-22；2026-10-13 拆为独立 10:00 定时）：把「逾期 + 临期
+    // （alertDays 内）」跨播报群汇总（filter=all 全量口径，不分人员字段），卡头 @ 指定负责人。
     // webhook 优先（与各播报群同款）；未配 webhook 时用 chat_id 走 im API 发卡。
     // 两者都空 = 功能关闭。open_id/chat_id 只存 .env（不硬编码进仓库，同审批群先例）。
     leaderGroup: {
