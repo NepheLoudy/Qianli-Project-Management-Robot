@@ -38,6 +38,10 @@ function matchNodeAny(nodeValue, values) {
 // 无人接单分桶阈值：与 ticket-bot 超时检查/unclosedService 主链路对齐（6h）
 const UNCLAIMED_MIN_AGE_MS = 6 * 60 * 60 * 1000;
 
+// 已指派待确认分桶阈值：对齐 ticket-bot 确认追问（ASSIGN_NUDGE_HOURS，默认 24h）——
+// 私聊追问过一轮还没确认的，次日 DDL 公开曝光。两仓阈值需同步
+const UNCONFIRMED_MIN_AGE_MS = Number(process.env.TICKET_ASSIGN_NUDGE_HOURS || 24) * 60 * 60 * 1000;
+
 /**
  * 获取未结单/无人接单工单分桶（ticket-bot 不可用时的降级直读链路）
  *
@@ -50,6 +54,10 @@ const UNCLAIMED_MIN_AGE_MS = 6 * 60 * 60 * 1000;
  * 补充负责人为空 + 距发起时间 ≥ 6h。降级链路无组别→群路由能力（GROUP_ROUTES 在
  * ticket-bot 侧），该桶不做分组、由 cron 层全群共用（随结单分桶降级行为）。
  *
+ * 已指派待确认分桶（unconfirmed，2026-10-15）口径与主链路一致：是否指定负责人=是 +
+ * 节点 =「负责人确认消息后通过」（拆段匹配）+ 补充负责人已绑定 + 距发起时间 ≥ 24h；
+ * 多人单续接中（触发节点+已绑定但非指定负责人流）不进本桶。
+ *
  * 全量拉取后本地拆段匹配（不再走服务端等值过滤）：并行分支的「；」拼接节点值
  * 等值过滤匹配不上，会静默漏桶。
  *
@@ -58,10 +66,11 @@ const UNCLAIMED_MIN_AGE_MS = 6 * 60 * 60 * 1000;
  *   - week：2 日外、7 日内
  *   - waiting：等回执待结单（无负责人/未填结单时间/超 7 日，2026-09-17 起不允许漏播）
  *
- * @returns {Promise<{ urgent: Array, week: Array, unclaimed: Array }>}
+ * @returns {Promise<{ urgent: Array, week: Array, unclaimed: Array, unconfirmed: Array }>}
  */
 async function getUnclosedBuckets() {
-  const { tableId, approvalField, closeValue, acceptValues, deadlineField, assigneeField, supplementField, routeField } = config.ticketClose;
+  const { tableId, approvalField, closeValue, acceptValues, deadlineField, assigneeField, supplementField, routeField,
+    assignField, assignYesValue, assignAcceptValue } = config.ticketClose;
   const records = await bitable.getAllRecords(tableId);
 
   const now = dayjs();
@@ -69,6 +78,7 @@ async function getUnclosedBuckets() {
   const urgent = [];
   const week = [];
   const unclaimed = [];
+  const unconfirmed = []; // 已指派待确认：公示绑定后超 24h 未确认（2026-10-15，不允许静默漏播）
   const waiting = []; // 等回执待结单：无负责人/未填结单时间/超 7 日（2026-09-17 口径，不允许静默漏播）
 
   for (const record of records) {
@@ -78,7 +88,31 @@ async function getUnclosedBuckets() {
     // —— 无人接单分桶：触发节点 + 补充负责人为空 + 发起超过 6h ——
     if (matchNodeAny(nodeValue, acceptValues)) {
       const sup = supplementField ? fields[supplementField] : null;
-      if (sup && sup.length > 0) continue; // 已有人接单
+      if (sup && sup.length > 0) {
+        // —— 已指派待确认：公示即绑定后滞留指定负责人确认节点（与 ticket-bot 同口径；
+        //     多人单续接中不满足节点/是否指定负责人条件，天然排除）——
+        const assignee = assigneeField ? fields[assigneeField]?.[0] : null;
+        if (
+          assignField && fields[assignField] === assignYesValue && assignee?.id &&
+          sup.some((p) => p?.id === assignee.id) &&
+          matchNodeAny(nodeValue, [assignAcceptValue])
+        ) {
+          const createdMs = getCreatedMs(fields);
+          if (createdMs && nowMs - createdMs >= UNCONFIRMED_MIN_AGE_MS) {
+            const display = getTicketDisplay(fields, record.record_id);
+            const groups = routeField ? fields[routeField] : null;
+            unconfirmed.push({
+              recordId: record.record_id,
+              title: display.title,
+              code: display.code,
+              assigneeName: assignee.name || '',
+              elapsedHours: Math.floor((nowMs - createdMs) / (60 * 60 * 1000)),
+              groups: Array.isArray(groups) ? groups.map(String) : groups ? [String(groups)] : [],
+            });
+          }
+        }
+        continue; // 已有接单痕迹：不进无人接单桶，也不进结单桶
+      }
       const createdMs = getCreatedMs(fields);
       if (!createdMs || nowMs - createdMs < UNCLAIMED_MIN_AGE_MS) continue;
 
@@ -148,6 +182,7 @@ async function getUnclosedBuckets() {
   urgent.sort((a, b) => a.daysLeft - b.daysLeft);
   week.sort((a, b) => a.daysLeft - b.daysLeft);
   unclaimed.sort((a, b) => b.elapsedHours - a.elapsedHours); // 等最久的排前
+  unconfirmed.sort((a, b) => b.elapsedHours - a.elapsedHours); // 滞留最久的排前
   waiting.sort((a, b) => {
     if (a.daysLeft === null && b.daysLeft === null) return 0;
     if (a.daysLeft === null) return 1;
@@ -155,7 +190,7 @@ async function getUnclosedBuckets() {
     return a.daysLeft - b.daysLeft;
   });
 
-  return { urgent, week, unclaimed, waiting };
+  return { urgent, week, unclaimed, unconfirmed, waiting };
 }
 
 /**
@@ -165,7 +200,7 @@ async function getUnclosedBuckets() {
  * 人员组别解析（USER_GROUPS → 通讯录部门 → 面向组别兜底）、组别到群 chatId 的映射、
  * 无人接单分桶（unclaimed）的口径与按「面向组别」分组。
  *
- * @returns {Promise<Object<{urgent: Array, week: Array, unclaimed: Array}>>} 以群 chatId 为键
+ * @returns {Promise<Object<{urgent: Array, week: Array, unclaimed: Array, unconfirmed: Array, waiting: Array}>>} 以群 chatId 为键
  */
 // ticket-bot 假死（端口存活但不响应）时快速超时走降级，不拖住正午播报；
 // 10s 为冷缓存余量（分组接口会对无 USER_GROUPS 映射的负责人逐人查通讯录部门）

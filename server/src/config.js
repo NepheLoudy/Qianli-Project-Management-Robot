@@ -146,6 +146,12 @@ module.exports = {
     supplementField: process.env.TICKET_SUPPLEMENT_FIELD || '补充负责人',
     // 无人接单分桶的组别字段（与 ticket-bot ROUTE_FIELD 对齐；降级链路只按它直出，不解析人员）
     routeField: process.env.TICKET_ROUTE_FIELD || '面向组别',
+    // 已指派待确认分桶（2026-10-15，与 ticket-bot 确认追问/unconfirmed 桶同口径）：
+    // 是否指定负责人=是 + 节点=assignAcceptValue + 补充负责人已绑定 + 超阈值未确认。
+    // 字段名默认取 ticket-bot 现网部署值（其 .env 的 ASSIGN_FIELD），漂移时两仓同步
+    assignField: process.env.TICKET_ASSIGN_FIELD || '是否指定人员负责',
+    assignYesValue: process.env.TICKET_ASSIGN_YES_VALUE || '是',
+    assignAcceptValue: process.env.TICKET_ASSIGN_ACCEPT_VALUE || '负责人确认消息后通过',
   },
   // 指令仅群内触发；私聊指令仅白名单内可用（open_id / p2p chat_id 任一命中即可）。
   // 两个列表都留空 = 所有人（含管理员）私聊指令均关闭，fail-closed。

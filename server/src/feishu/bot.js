@@ -221,7 +221,7 @@ function countQualifiedNodes(nodes) {
   return count;
 }
 
-function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote, mentionField = 'owner', pausedProjects = [], ticketBuckets = { urgent: [], week: [], unclaimed: [] }) {
+function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote, mentionField = 'owner', pausedProjects = [], ticketBuckets = { urgent: [], week: [], unclaimed: [], unconfirmed: [] }) {
   const elements = [];
 
   elements.push({
@@ -284,16 +284,17 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
   // ticket-bot 联动：未结单工单按理想结单时间分栏（只列处理人名字不 @，结单提醒由 ticket-bot 私聊完成）
   // 三桶统一解构默认（2026-09-17）：API 形状漂移时不 TypeError 炸整轮播报
   //（注意：解构必须在无人接单分栏之前——该分栏也读 buckets，此前曾因声明位置靠后触发 TDZ ReferenceError）
-  const buckets = { urgent: [], week: [], unclaimed: [], ...(ticketBuckets || {}) };
+  const buckets = { urgent: [], week: [], unclaimed: [], unconfirmed: [], ...(ticketBuckets || {}) };
 
   // ticket-bot 联动：无人接单工单分栏（触发节点滞留超 6h 无人接单；只列标题不 @，
-  // 群内问询与组长私聊升级由 ticket-bot 超时检查承担）
+  // 群内问询与组长私聊升级由 ticket-bot 超时检查承担；分栏头部带接单引导——
+  // 2026-10-15 曼波：曝光要变成可执行，组员看到就知道怎么接）
   const unclaimedCount = buckets.unclaimed.length;
   if (unclaimedCount > 0) {
     elements.push({ tag: 'hr' });
     elements.push({
       tag: 'markdown',
-      content: `**🆘 无人接单工单（超6小时无人响应，${unclaimedCount}个）**`,
+      content: `**🆘 无人接单工单（超6小时无人响应，${unclaimedCount}个）**\n🛎️ 接单方式：群内 @工单机器人 按工单卡片提示发送「接单N」（仅一张待接时发「接单」）`,
     });
     const lines = buckets.unclaimed.map(t => {
       const when = t.elapsedHours >= 24
@@ -305,6 +306,28 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
       return `🆘 ${groups}${code}**${sanitizeCardText(t.title)}** - ${when}`;
     });
     elements.push({ tag: 'markdown', content: lines.join('\n') });
+  }
+
+  // ticket-bot 联动：已指派待确认分栏（2026-10-15）——公示即绑定后滞留「负责人确认
+  // 消息后通过」超 24h 未确认的单。此前该状态两头不进（ticket-bot unclaimed 桶按
+  // 「已接单」跳过、结单三桶只收回执节点），DDL 播报完全不可见。只列名字不 @，
+  // 私聊追问由 ticket-bot 确认追问承担，分栏头部带确认引导
+  const unconfirmedCount = (buckets.unconfirmed || []).length;
+  if (unconfirmedCount > 0) {
+    elements.push({ tag: 'hr' });
+    elements.push({
+      tag: 'markdown',
+      content: `**📨 已指派待确认（超24小时未确认接单，${unconfirmedCount}个）**\n🛎️ 确认方式：群内 @工单机器人 按工单卡片提示发送「接单N」，或私聊工单机器人回复「接单」`,
+    });
+    const unconfirmedLines = (buckets.unconfirmed || []).map(t => {
+      const who = t.assigneeName ? `👤 ${sanitizeCardText(t.assigneeName)}` : '👤（负责人未解析）';
+      const code = t.code ? `「${t.code}」` : '';
+      const when = t.elapsedHours >= 48
+        ? `🔴 已滞留 ${Math.floor(t.elapsedHours / 24)} 天未确认`
+        : `🟠 已滞留 ${t.elapsedHours} 小时未确认`;
+      return `📨 ${who} ${code}**${sanitizeCardText(t.title)}** - ${when}`;
+    });
+    elements.push({ tag: 'markdown', content: unconfirmedLines.join('\n') });
   }
 
   // ticket-bot 联动：未结单工单按理想结单时间分栏（只列处理人名字不 @，结单提醒由 ticket-bot 私聊完成）
@@ -410,7 +433,7 @@ function buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote
 }
 
 async function sendDDLReport(overdueProjects, urgentProjects, weekProjects, quote, options = {}) {
-  const { webhookUrl, mentionField = 'owner', pausedProjects = [], ticketBuckets = { urgent: [], week: [], unclaimed: [] } } = options;
+  const { webhookUrl, mentionField = 'owner', pausedProjects = [], ticketBuckets = { urgent: [], week: [], unclaimed: [], unconfirmed: [] } } = options;
   const card = buildDDLReportCard(overdueProjects, urgentProjects, weekProjects, quote, mentionField, pausedProjects, ticketBuckets);
   return sendMessage(card, webhookUrl);
 }

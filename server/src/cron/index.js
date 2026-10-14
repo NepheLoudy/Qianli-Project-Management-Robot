@@ -115,17 +115,17 @@ async function runDDLBroadcast() {
       // 未结单工单：优先按「负责人所属组别」分组（ticket-bot 计算，各组只看到自己的工单，
       // 播报对象为指定负责人/补充负责人）；分组数据失败时降级为全群共用同一份（不分组），
       // 仍失败则本次不含工单分栏，均不影响 DDL 播报本身
-      let ticketBuckets = { urgent: [], week: [], unclaimed: [], waiting: [] };
+      let ticketBuckets = { urgent: [], week: [], unclaimed: [], unconfirmed: [], waiting: [] };
       let groupedTickets = null;
       try {
         groupedTickets = await ticketCloseService.getGroupedBuckets();
-        const total = Object.values(groupedTickets).reduce((n, b) => n + b.urgent.length + b.week.length + (b.unclaimed || []).length, 0);
+        const total = Object.values(groupedTickets).reduce((n, b) => n + b.urgent.length + b.week.length + (b.unclaimed || []).length + (b.unconfirmed || []).length, 0);
         console.log(`[DDL播报] 未结单工单(按组分桶): 群数=${Object.keys(groupedTickets).length} 工单数=${total}`);
       } catch (err) {
         console.warn(`[DDL播报] 按组工单读取失败，降级为全群同一份: ${err.message}`);
         try {
           ticketBuckets = await ticketCloseService.getUnclosedBuckets();
-          console.log(`[DDL播报] 未结单工单: 2日内加急:${ticketBuckets.urgent.length} 7日内:${ticketBuckets.week.length} 无人接单:${(ticketBuckets.unclaimed || []).length}`);
+          console.log(`[DDL播报] 未结单工单: 2日内加急:${ticketBuckets.urgent.length} 7日内:${ticketBuckets.week.length} 无人接单:${(ticketBuckets.unclaimed || []).length} 已指派待确认:${(ticketBuckets.unconfirmed || []).length}`);
         } catch (err2) {
           console.warn(`[DDL播报] 未结单工单读取失败（本次播报不含工单分栏）: ${err2.message}`);
         }

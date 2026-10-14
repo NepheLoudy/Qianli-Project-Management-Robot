@@ -220,9 +220,10 @@ project-management-robot/
 - 🎫 **工单结单加急（2日内）**：理想结单时间在 2 日内，已超期的标注超期天数（节点处于未审批的最后一层「回执单：是否结单」= 工作已交付但未结单）
 - 🎫 **工单7日内待结单**：理想结单时间在 2 日外、7 日内
 - ⏳ **等回执待结单**：回执结单节点上无负责人 / 未填理想结单时间 / 超 7 日窗口的其余工单（2026-09-17 新增；等回执=没做完，不允许漏播——无负责人按面向组别兜底分组）
-- 🆘 **无人接单工单（超6小时）**：节点处于任一触发节点 + 补充负责人为空 + 距发起 ≥6 小时，按已发布时长降序（v56 新增）
+- 🆘 **无人接单工单（超6小时）**：节点处于任一触发节点 + 补充负责人为空 + 距发起 ≥6 小时，按已发布时长降序（v56 新增）；分栏头部带接单引导「@工单机器人 发接单N」（2026-10-15 新增）
+- 📨 **已指派待确认（超24小时）**：指定负责人工单公示即绑定后滞留「负责人确认消息后通过」节点、距发起 ≥24 小时仍未确认接单，列负责人姓名与滞留时长，分栏头部带确认引导「@工单机器人 发接单N / 私聊回接单」（2026-10-15 新增；此前该状态两头不进、DDL 完全不可见；多人单续接中与未绑定单不进本桶；私聊追问由 ticket-bot 确认追问承担）
 
-工单分栏只列处理人名字不 @（临近结单的私聊提醒与无人接单的问询/组长升级由 ticket-bot 负责）。相关配置见 `server/.env.example` 的 `TICKET_*` 项，字段/节点值改动需与 ticket-bot 侧同步。
+工单分栏只列处理人名字不 @（临近结单的私聊提醒与无人接单的问询/组长升级、已指派未确认的私聊追问由 ticket-bot 负责）。相关配置见 `server/.env.example` 的 `TICKET_*` 项（unconfirmed 桶另含 `TICKET_ASSIGN_FIELD/TICKET_ASSIGN_YES_VALUE/TICKET_ASSIGN_ACCEPT_VALUE/TICKET_ASSIGN_NUDGE_HOURS`，默认对齐 ticket-bot 现网），字段/节点值改动需与 ticket-bot 侧同步。
 
 **晚间静默（播报时段限制）**：每日 DDL 播报（含负责人群整合播报与逾期确认私聊）触发落在 02:00–09:00（Asia/Shanghai，`QUIET_HOURS_START/END` 可配、`QUIET_HOURS_DISABLED=1` 关闭）内时不直接执行，积压到 09:00 整点以补发时刻数据重跑；`/test-ddl`、`/test-broadcast` 等人工触发与对话/指令回复不受限。实现见 `server/src/utils/quietHours.js`。
 
@@ -461,6 +462,7 @@ node server/scripts/stub-test-ddl-retry.js     # DDL 逾期确认重试
 node server/scripts/stub-test-ddl-zombie.js    # DDL 僵尸确认清理
 node server/scripts/stub-test-meeting-reminder.js     # 会议提醒
 node server/scripts/stub-test-status-fleet.js  # /status 舰队健康快照
+node server/scripts/stub-test-ticket-buckets.js  # 工单分桶·已指派待确认（unconfirmed 降级链路判定/阈值/多人单排除）+ DDL 卡片分栏渲染（📨 已指派待确认/无人接单引导行）——2026-10-15
 ```
 九套（`npm test` / push 闸门 `readdirSync` 自动发现全部桩）。`npm run push` 部署前自动跑（测试不过不部署，`SKIP_TESTS=1` 可跳过）；新增行为须带新断言。
 
