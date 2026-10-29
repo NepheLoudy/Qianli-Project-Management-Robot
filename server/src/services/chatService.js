@@ -843,7 +843,11 @@ async function processChatMessage(event) {
 
   const cmd = parseCommand(text);
   if (cmd) {
-    if (!isGroup && !isP2pCommandAllowed(senderId, message.chat_id)) {
+    // 私聊单项豁免（2026-10-29，按曼波令）：/print-bind 是「绑定打印进程私信」的自助入口——
+    // 功能本身就是绑私信通道，若在私聊被拦则永远绑不上（鸡生蛋：白名单要求先有 open_id，
+    // 而拿 open_id 的唯一途径就是私聊里发码）。仅豁免这一条，其余指令私聊规则不变。
+    const p2pExempt = cmd.command === '/print-bind';
+    if (!isGroup && !p2pExempt && !isP2pCommandAllowed(senderId, message.chat_id)) {
       // 铁律：指令只在群里触发并回复到对应群；私聊指令仅白名单账号（管理员）可用
       console.log('[对话服务] 拒绝私聊指令:', cmd.command, 'sender:', senderId || '未知', 'chat_id:', message.chat_id);
       replyText = '⚠️ 指令仅支持在群聊中 @机器人 使用，私聊指令暂未开放';
