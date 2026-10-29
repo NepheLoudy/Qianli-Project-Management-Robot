@@ -50,7 +50,8 @@
   - `/keywords` — 查看论坛话题清单（v125 起为帖子判定依据）（运维，不在 /help 展示）
   - `/autoreply` — 查看关键词自动回答表（群消息表 / @触发表两张）（运维，不在 /help 展示）
   - `/history` — 查看近期播报历史（运维，不在 /help 展示）
-  - `/print-*` — 3D 打印指令转发（bambu）
+  - `/print-*` — 3D 打印指令转发（bambu；2026-10-29 起转发体透传 `senderId`=飞书 open_id）
+  - `/print-bind` — 打印账号飞书自助绑定（转发 bambu；群内 @机器人 发 6 位绑定码）
   - `/approval-*` — 财务指令转发（approval-bot；审批群内指令整体切换为财务）
 - **发票采集观察转发（2026-09-25 起）**：队员**私聊**机器人发发票图片或 PDF/文件，hub 自动 fire-and-forget 转给 approval-bot `POST /api/invoice/collect` 识别入台账（不阻塞消息管线；识别结果/打回/回执均由 approval-bot 私聊回复，hub 不代答）；与值日照片凭证双线并行互不干扰
 - 消息去重机制，防止重复处理

@@ -704,7 +704,7 @@ const commandHandlers = {
   '/history': handleHistoryCommand,
 };
 
-async function handlePrintCommand(command, args) {
+async function handlePrintCommand(command, args, senderId) {
   const printServerUrl = config.printServer.url;
   
   try {
@@ -714,7 +714,8 @@ async function handlePrintCommand(command, args) {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ command, args }),
+      // 透传发送者身份（飞书 open_id）：打印服务 /print-bind 自助绑定用（2026-10-29）
+      body: JSON.stringify({ command, args, senderId: senderId || '' }),
     });
     
     if (!res.ok) {
@@ -875,7 +876,7 @@ async function processChatMessage(event) {
           usageReport.report(senderId, '抽奖', { fun: true, learn: lotteryDraw.keywords });
           replyText = lotteryDraw.text;
         } else if (cmd.command.startsWith('/print-')) {
-          replyText = await handlePrintCommand(cmd.command, cmd.args);
+          replyText = await handlePrintCommand(cmd.command, cmd.args, senderId);
         } else {
           replyText = `❌ 未知指令：${cmd.command}\n发送 /help 查看可用指令`;
         }
